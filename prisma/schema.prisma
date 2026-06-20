@@ -1,0 +1,462 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum MembershipStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PENDING
+  PAUSED
+}
+
+enum MembershipBillingInterval {
+  NONE
+  MONTHLY
+  YEARLY
+}
+
+enum WaiverStatus {
+  VALID
+  MISSING
+  EXPIRED
+  REVOKED
+}
+
+enum VisitStatus {
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+enum PartyStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum PartyGuestStatus {
+  EXPECTED
+  CHECKED_IN
+  CHECKED_OUT
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TimeClockStatus {
+  CLOCKED_IN
+  CLOCKED_OUT
+}
+
+enum SearchEntityType {
+  FAMILY
+  PARENT
+  CHILD
+  PARTY
+  MEMBERSHIP
+  WAIVER
+  EMPLOYEE
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  timezone  String   @default("America/New_York")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  families          Family[]
+  parents           Parent[]
+  children          Child[]
+  visits            Visit[]
+  membershipPlans   MembershipPlan[]
+  memberships       Membership[]
+  membershipPayments MembershipPayment[]
+  waivers           Waiver[]
+  parties           Party[]
+  partyGuests       PartyGuest[]
+  partyAddOns       PartyAddOn[]
+  partyAddOnItems   PartyAddOnItem[]
+  employees         Employee[]
+  employeeTimeClocks EmployeeTimeClock[]
+}
+
+model Family {
+  id        String        @id @default(cuid())
+  tenantId  String
+  name      String
+  status    AccountStatus @default(ACTIVE)
+  notes     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parents     Parent[]
+  children    Child[]
+  visits      Visit[]
+  memberships Membership[]
+  waivers     Waiver[]
+  parties     Party[]
+  membershipPayments MembershipPayment[]
+
+  @@index([tenantId])
+  @@index([name])
+}
+
+model Parent {
+  id        String   @id @default(cuid())
+  tenantId  String
+  familyId  String
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  address1  String?
+  address2  String?
+  city      String?
+  state     String?
+  zip       String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  waivers Waiver[]
+  parties Party[]
+
+  @@index([tenantId])
+  @@index([familyId])
+  @@index([lastName])
+  @@index([email])
+  @@index([phone])
+}
+
+model Child {
+  id           String   @id @default(cuid())
+  tenantId     String
+  familyId     String
+  firstName    String
+  lastName     String
+  dateOfBirth  DateTime?
+  allergies    String?
+  medicalNotes String?
+  photoUrl     String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  family      Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  visits      Visit[]
+  memberships Membership[]
+  waivers     WaiverChild[]
+  partyGuests PartyGuest[]
+
+  @@index([tenantId])
+  @@index([familyId])
+  @@index([firstName])
+  @@index([lastName])
+}
+
+model Visit {
+  id           String      @id @default(cuid())
+  tenantId     String
+  familyId     String
+  childId      String
+  checkedInAt  DateTime    @default(now())
+  checkedOutAt DateTime?
+  status       VisitStatus @default(CHECKED_IN)
+  visitType    String      @default("Open Play")
+  notes        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  child  Child  @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([familyId])
+  @@index([childId])
+  @@index([checkedInAt])
+  @@index([status])
+}
+
+model MembershipPlan {
+  id              String                     @id @default(cuid())
+  tenantId        String
+  name            String
+  description     String?
+  price           Decimal                    @db.Decimal(10, 2)
+  billingInterval MembershipBillingInterval  @default(NONE)
+  durationDays    Int?
+  visitLimit      Int?
+  autoRenewDefault Boolean                   @default(false)
+  active          Boolean                    @default(true)
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+
+  @@index([tenantId])
+  @@index([active])
+}
+
+model Membership {
+  id                   String           @id @default(cuid())
+  tenantId             String
+  familyId             String
+  childId              String?
+  membershipPlanId     String?
+  name                 String
+  status               MembershipStatus @default(ACTIVE)
+  startsAt             DateTime
+  endsAt               DateTime?
+  autoRenew            Boolean          @default(false)
+  nextBillingAt        DateTime?
+  cancelledAt          DateTime?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  notes                String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  family         Family          @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  child          Child?          @relation(fields: [childId], references: [id], onDelete: SetNull)
+  membershipPlan MembershipPlan? @relation(fields: [membershipPlanId], references: [id], onDelete: SetNull)
+  payments       MembershipPayment[]
+
+  @@index([tenantId])
+  @@index([familyId])
+  @@index([childId])
+  @@index([membershipPlanId])
+  @@index([status])
+  @@index([endsAt])
+  @@index([nextBillingAt])
+}
+
+model MembershipPayment {
+  id                  String        @id @default(cuid())
+  tenantId            String
+  familyId            String
+  membershipId        String
+  amount              Decimal       @db.Decimal(10, 2)
+  status              PaymentStatus @default(PENDING)
+  paidAt              DateTime?
+  dueAt               DateTime?
+  processor           String?
+  processorPaymentId  String?
+  notes               String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  family     Family     @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([familyId])
+  @@index([membershipId])
+  @@index([status])
+  @@index([dueAt])
+}
+
+model Waiver {
+  id         String       @id @default(cuid())
+  tenantId   String
+  familyId   String
+  signedById String?
+  status     WaiverStatus @default(VALID)
+  signedAt   DateTime?
+  expiresAt  DateTime?
+  signature  String?
+  pdfUrl     String?
+  waiverText String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  family   Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  signedBy Parent?       @relation(fields: [signedById], references: [id], onDelete: SetNull)
+  children WaiverChild[]
+
+  @@index([tenantId])
+  @@index([familyId])
+  @@index([signedById])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model WaiverChild {
+  id       String @id @default(cuid())
+  waiverId String
+  childId  String
+
+  waiver Waiver @relation(fields: [waiverId], references: [id], onDelete: Cascade)
+  child  Child  @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@unique([waiverId, childId])
+  @@index([childId])
+}
+
+model Party {
+  id             String      @id @default(cuid())
+  tenantId       String
+  familyId       String?
+  primaryParentId String?
+  title          String
+  eventDate      DateTime
+  startTime      DateTime
+  endTime        DateTime
+  status         PartyStatus @default(PENDING)
+  packageName    String?
+  guestCount     Int?
+  room           String?
+  depositAmount  Decimal?    @db.Decimal(10, 2)
+  balanceDue     Decimal?    @db.Decimal(10, 2)
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  family        Family?        @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  primaryParent Parent?        @relation(fields: [primaryParentId], references: [id], onDelete: SetNull)
+  guests        PartyGuest[]
+  addOnItems    PartyAddOnItem[]
+
+  @@index([tenantId])
+  @@index([familyId])
+  @@index([primaryParentId])
+  @@index([eventDate])
+  @@index([status])
+}
+
+model PartyGuest {
+  id          String           @id @default(cuid())
+  tenantId    String
+  partyId     String
+  childId     String?
+  guestName   String?
+  status      PartyGuestStatus @default(EXPECTED)
+  checkedInAt DateTime?
+  checkedOutAt DateTime?
+  notes       String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  party  Party  @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  child  Child? @relation(fields: [childId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([partyId])
+  @@index([childId])
+  @@index([status])
+}
+
+model PartyAddOn {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items  PartyAddOnItem[]
+
+  @@index([tenantId])
+  @@index([active])
+}
+
+model PartyAddOnItem {
+  id           String   @id @default(cuid())
+  tenantId     String
+  partyId      String
+  partyAddOnId String
+  quantity     Int      @default(1)
+  unitPrice    Decimal  @db.Decimal(10, 2)
+  totalPrice   Decimal  @db.Decimal(10, 2)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  party      Party      @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  partyAddOn PartyAddOn @relation(fields: [partyAddOnId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([partyId])
+  @@index([partyAddOnId])
+}
+
+model Employee {
+  id        String         @id @default(cuid())
+  tenantId  String
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  role      String?
+  status    EmployeeStatus @default(ACTIVE)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  timeClocks EmployeeTimeClock[]
+
+  @@index([tenantId])
+  @@index([lastName])
+  @@index([email])
+  @@index([status])
+}
+
+model EmployeeTimeClock {
+  id           String          @id @default(cuid())
+  tenantId     String
+  employeeId   String
+  clockedInAt  DateTime        @default(now())
+  clockedOutAt DateTime?
+  status       TimeClockStatus @default(CLOCKED_IN)
+  notes        String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([employeeId])
+  @@index([clockedInAt])
+  @@index([status])
+}
