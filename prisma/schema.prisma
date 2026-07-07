@@ -95,9 +95,11 @@ model Tenant {
   city      String?
   state     String?
   zip       String?
-  logoUrl   String?
-  primaryColor String?
-  accentColor  String?
+  logoUrl       String?
+  iconLogoUrl   String?
+  primaryColor  String?
+  accentColor   String?
+  tertiaryColor String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
