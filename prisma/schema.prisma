@@ -87,6 +87,17 @@ model Tenant {
   name      String
   slug      String   @unique
   timezone  String   @default("America/New_York")
+  phone     String?
+  email     String?
+  website   String?
+  address1  String?
+  address2  String?
+  city      String?
+  state     String?
+  zip       String?
+  logoUrl   String?
+  primaryColor String?
+  accentColor  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -102,6 +113,10 @@ model Tenant {
   partyGuests       PartyGuest[]
   partyAddOns       PartyAddOn[]
   partyAddOnItems   PartyAddOnItem[]
+  admissionTypes    AdmissionType[]
+  eventTypes        EventType[]
+  packages          Package[]
+  staffRoles        StaffRole[]
   employees         Employee[]
   employeeTimeClocks EmployeeTimeClock[]
 }
@@ -193,6 +208,7 @@ model Visit {
   checkedOutAt DateTime?
   status       VisitStatus @default(CHECKED_IN)
   visitType    String      @default("Open Play")
+  admissionTypeId String?
   notes        String?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
@@ -200,12 +216,73 @@ model Visit {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
   child  Child  @relation(fields: [childId], references: [id], onDelete: Cascade)
+  admissionType AdmissionType? @relation(fields: [admissionTypeId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([familyId])
   @@index([childId])
   @@index([checkedInAt])
   @@index([status])
+  @@index([admissionTypeId])
+}
+
+model AdmissionType {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  color       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  visits Visit[]
+
+  @@index([tenantId])
+  @@index([active])
+}
+
+model EventType {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  color       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parties Party[]
+  packages Package[]
+
+  @@index([tenantId])
+  @@index([active])
+}
+
+model Package {
+  id              String   @id @default(cuid())
+  tenantId        String
+  eventTypeId     String?
+  name            String
+  description     String?
+  price           Decimal  @db.Decimal(10, 2)
+  depositAmount   Decimal? @db.Decimal(10, 2)
+  guestLimit      Int?
+  durationMinutes Int?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  eventType EventType?  @relation(fields: [eventTypeId], references: [id], onDelete: SetNull)
+  parties   Party[]
+
+  @@index([tenantId])
+  @@index([eventTypeId])
+  @@index([active])
 }
 
 model MembershipPlan {
@@ -332,6 +409,8 @@ model Party {
   tenantId       String
   familyId       String?
   primaryParentId String?
+  eventTypeId    String?
+  packageId      String?
   title          String
   eventDate      DateTime
   startTime      DateTime
@@ -349,12 +428,16 @@ model Party {
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   family        Family?        @relation(fields: [familyId], references: [id], onDelete: SetNull)
   primaryParent Parent?        @relation(fields: [primaryParentId], references: [id], onDelete: SetNull)
+  eventType     EventType?     @relation(fields: [eventTypeId], references: [id], onDelete: SetNull)
+  package       Package?       @relation(fields: [packageId], references: [id], onDelete: SetNull)
   guests        PartyGuest[]
   addOnItems    PartyAddOnItem[]
 
   @@index([tenantId])
   @@index([familyId])
   @@index([primaryParentId])
+  @@index([eventTypeId])
+  @@index([packageId])
   @@index([eventDate])
   @@index([status])
 }
@@ -420,9 +503,27 @@ model PartyAddOnItem {
   @@index([partyAddOnId])
 }
 
+model StaffRole {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  permissions Json?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employees Employee[]
+
+  @@index([tenantId])
+  @@index([active])
+}
+
 model Employee {
   id        String         @id @default(cuid())
   tenantId  String
+  staffRoleId String?
   firstName String
   lastName  String
   email     String?
@@ -433,9 +534,11 @@ model Employee {
   updatedAt DateTime       @updatedAt
 
   tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staffRole  StaffRole?          @relation(fields: [staffRoleId], references: [id], onDelete: SetNull)
   timeClocks EmployeeTimeClock[]
 
   @@index([tenantId])
+  @@index([staffRoleId])
   @@index([lastName])
   @@index([email])
   @@index([status])
