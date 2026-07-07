@@ -1,25 +1,48 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
 type StaffRolePayload = {
   id?: string;
   name?: string;
   description?: string | null;
-  permissions?: Record<string, unknown> | null;
+  permissions?: Prisma.InputJsonValue | null;
   active?: boolean;
 };
 
 async function getTenant() {
-  const palmettoTenant = await prisma.tenant.findUnique({ where: { slug: "palmetto-playhouse" } });
-  if (palmettoTenant) return palmettoTenant;
-  return prisma.tenant.findFirst({ orderBy: { createdAt: "asc" } });
+  const palmettoTenant = await prisma.tenant.findUnique({
+    where: {
+      slug: "palmetto-playhouse",
+    },
+  });
+
+  if (palmettoTenant) {
+    return palmettoTenant;
+  }
+
+  return prisma.tenant.findFirst({
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+}
+
+function normalizePermissions(
+  permissions: StaffRolePayload["permissions"]
+): Prisma.InputJsonValue {
+  if (permissions === null || permissions === undefined) {
+    return {};
+  }
+
+  return permissions;
 }
 
 function serializeStaffRole(role: {
   id: string;
   name: string;
   description: string | null;
-  permissions: unknown;
+  permissions: Prisma.JsonValue;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -37,18 +60,33 @@ function serializeStaffRole(role: {
 
 export async function GET() {
   const tenant = await getTenant();
-  if (!tenant) return NextResponse.json({ staffRoles: [] });
+
+  if (!tenant) {
+    return NextResponse.json({ staffRoles: [] });
+  }
 
   const staffRoles = await prisma.staffRole.findMany({
-    where: { tenantId: tenant.id },
-    orderBy: [{ active: "desc" }, { name: "asc" }],
+    where: {
+      tenantId: tenant.id,
+    },
+    orderBy: [
+      {
+        active: "desc",
+      },
+      {
+        name: "asc",
+      },
+    ],
   });
 
-  return NextResponse.json({ staffRoles: staffRoles.map(serializeStaffRole) });
+  return NextResponse.json({
+    staffRoles: staffRoles.map(serializeStaffRole),
+  });
 }
 
 export async function POST(request: Request) {
   const tenant = await getTenant();
+
   if (!tenant) {
     return NextResponse.json(
       { error: "No tenant found. Create a tenant before adding staff roles." },
@@ -59,49 +97,83 @@ export async function POST(request: Request) {
   const body = (await request.json()) as StaffRolePayload;
   const name = body.name?.trim();
 
-  if (!name) return NextResponse.json({ error: "Staff role name is required." }, { status: 400 });
+  if (!name) {
+    return NextResponse.json(
+      { error: "Staff role name is required." },
+      { status: 400 }
+    );
+  }
 
-  const role = await prisma.staffRole.create({
+  const staffRole = await prisma.staffRole.create({
     data: {
       tenantId: tenant.id,
       name,
       description: body.description?.trim() || null,
-      permissions: body.permissions ?? {},
+      permissions: normalizePermissions(body.permissions),
       active: body.active ?? true,
     },
   });
 
-  return NextResponse.json({ staffRole: serializeStaffRole(role) });
+  return NextResponse.json({
+    staffRole: serializeStaffRole(staffRole),
+  });
 }
 
 export async function PUT(request: Request) {
   const body = (await request.json()) as StaffRolePayload;
   const id = body.id?.trim();
+
+  if (!id) {
+    return NextResponse.json(
+      { error: "Staff role id is required." },
+      { status: 400 }
+    );
+  }
+
   const name = body.name?.trim();
 
-  if (!id) return NextResponse.json({ error: "Staff role id is required." }, { status: 400 });
-  if (!name) return NextResponse.json({ error: "Staff role name is required." }, { status: 400 });
+  if (!name) {
+    return NextResponse.json(
+      { error: "Staff role name is required." },
+      { status: 400 }
+    );
+  }
 
-  const role = await prisma.staffRole.update({
-    where: { id },
+  const staffRole = await prisma.staffRole.update({
+    where: {
+      id,
+    },
     data: {
       name,
       description: body.description?.trim() || null,
-      permissions: body.permissions ?? {},
+      permissions: normalizePermissions(body.permissions),
       active: body.active ?? true,
     },
   });
 
-  return NextResponse.json({ staffRole: serializeStaffRole(role) });
+  return NextResponse.json({
+    staffRole: serializeStaffRole(staffRole),
+  });
 }
 
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id")?.trim();
 
-  if (!id) return NextResponse.json({ error: "Staff role id is required." }, { status: 400 });
+  if (!id) {
+    return NextResponse.json(
+      { error: "Staff role id is required." },
+      { status: 400 }
+    );
+  }
 
-  await prisma.staffRole.delete({ where: { id } });
+  await prisma.staffRole.delete({
+    where: {
+      id,
+    },
+  });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+  });
 }
