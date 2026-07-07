@@ -82,6 +82,19 @@ enum SearchEntityType {
   EMPLOYEE
 }
 
+enum EventDepositStatus {
+  PENDING
+  CASH_COLLECTED
+  CARD_COLLECTED
+  WAIVED
+}
+
+enum EventPaymentMethod {
+  CASH
+  CARD
+  OTHER
+}
+
 model Tenant {
   id        String   @id @default(cuid())
   name      String
@@ -121,6 +134,8 @@ model Tenant {
   staffRoles        StaffRole[]
   employees         Employee[]
   employeeTimeClocks EmployeeTimeClock[]
+  eventTimelineItems EventTimelineItem[]
+  eventPayments EventPayment[]
 }
 
 model Family {
@@ -413,6 +428,7 @@ model Party {
   primaryParentId String?
   eventTypeId    String?
   packageId      String?
+  eventNumber    String?     @unique
   title          String
   eventDate      DateTime
   startTime      DateTime
@@ -420,8 +436,11 @@ model Party {
   status         PartyStatus @default(PENDING)
   packageName    String?
   guestCount     Int?
+  guestOfHonor   String?
   room           String?
   depositAmount  Decimal?    @db.Decimal(10, 2)
+  depositStatus  EventDepositStatus @default(PENDING)
+  depositMethod  EventPaymentMethod?
   balanceDue     Decimal?    @db.Decimal(10, 2)
   notes          String?
   createdAt      DateTime    @default(now())
@@ -434,6 +453,8 @@ model Party {
   package       Package?       @relation(fields: [packageId], references: [id], onDelete: SetNull)
   guests        PartyGuest[]
   addOnItems    PartyAddOnItem[]
+  timelineItems EventTimelineItem[]
+  payments      EventPayment[]
 
   @@index([tenantId])
   @@index([familyId])
@@ -441,6 +462,7 @@ model Party {
   @@index([eventTypeId])
   @@index([packageId])
   @@index([eventDate])
+  @@index([eventNumber])
   @@index([status])
 }
 
@@ -503,6 +525,46 @@ model PartyAddOnItem {
   @@index([tenantId])
   @@index([partyId])
   @@index([partyAddOnId])
+}
+
+model EventPayment {
+  id            String             @id @default(cuid())
+  tenantId      String
+  partyId       String
+  amount        Decimal            @db.Decimal(10, 2)
+  method        EventPaymentMethod
+  status        PaymentStatus      @default(PAID)
+  collectedAt   DateTime           @default(now())
+  notes         String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  party  Party  @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([partyId])
+  @@index([method])
+  @@index([status])
+  @@index([collectedAt])
+}
+
+model EventTimelineItem {
+  id        String   @id @default(cuid())
+  tenantId  String
+  partyId   String
+  title     String
+  body      String?
+  icon      String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  party  Party  @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([partyId])
+  @@index([createdAt])
 }
 
 model StaffRole {
