@@ -299,6 +299,7 @@ export default function PartiesPage() {
   const [parties, setParties] = useState<Party[]>(fallbackParties);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [openCard, setOpenCard] = useState("next");
+  const [copyStatus, setCopyStatus] = useState("");
 
   useEffect(() => {
     async function loadPartyManagerData() {
@@ -436,10 +437,46 @@ export default function PartiesPage() {
           : "Complete Event"
         : "Send Thank You";
 
-  function copyInviteLink() {
+  async function copyInviteLink() {
     if (!selectedParty.inviteUrl) return;
 
-    navigator.clipboard?.writeText(selectedParty.inviteUrl).catch(() => undefined);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(selectedParty.inviteUrl);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = selectedParty.inviteUrl;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+
+      setCopyStatus("Copied!");
+      window.setTimeout(() => setCopyStatus(""), 1800);
+    } catch {
+      setCopyStatus("Copy failed");
+      window.setTimeout(() => setCopyStatus(""), 1800);
+    }
+  }
+
+  function openInviteLink() {
+    if (!selectedParty.inviteUrl) return;
+    window.open(selectedParty.inviteUrl, "_blank", "noopener,noreferrer");
+  }
+
+  function emailInviteLink() {
+    if (!selectedParty.inviteUrl) return;
+
+    const subject = encodeURIComponent(`RSVP link for ${selectedParty.title}`);
+    const body = encodeURIComponent(
+      `Here is your RSVP + waiver link for ${selectedParty.title}:\n\n${selectedParty.inviteUrl}\n\nYou can send this to your guests so they can RSVP and sign the waiver before the event.`
+    );
+
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
 
   return (
@@ -578,7 +615,11 @@ export default function PartiesPage() {
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">{selectedParty.title}</h2>
                       {selectedParty.inviteUrl && (
-                        <button onClick={copyInviteLink} className="rounded-full border border-[#B7D4FF] bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#0B55C6]">
+                        <button
+                          onClick={openInviteLink}
+                          title="Open RSVP link"
+                          className="rounded-full border border-[#B7D4FF] bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#0B55C6]"
+                        >
                           RSVP Link
                         </button>
                       )}
@@ -790,10 +831,16 @@ export default function PartiesPage() {
                 <section className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm">
                   <p className="text-sm font-semibold text-[#6B7280]">RSVP + Waiver Link</p>
                   <p className="mt-2 break-all rounded-[8px] bg-[#F6F0E6] p-3 text-xs text-[#1E293B]">{selectedParty.inviteUrl}</p>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button onClick={copyInviteLink} className="rounded-[8px] bg-[#1E293B] px-3 py-2 text-xs font-semibold text-white">Copy Link</button>
-                    <button className="rounded-[8px] border border-[#B7D4FF] bg-[#EEF5FF] px-3 py-2 text-xs font-semibold text-[#0B55C6]">Email Host</button>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <button onClick={openInviteLink} className="rounded-[8px] border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-[#1E293B]">Open</button>
+                    <button onClick={copyInviteLink} className="rounded-[8px] bg-[#1E293B] px-3 py-2 text-xs font-semibold text-white">Copy</button>
+                    <button onClick={emailInviteLink} className="rounded-[8px] border border-[#B7D4FF] bg-[#EEF5FF] px-3 py-2 text-xs font-semibold text-[#0B55C6]">Email</button>
                   </div>
+                  {copyStatus && (
+                    <p className="mt-2 rounded-[8px] bg-[#F6F0E6] px-3 py-2 text-xs font-semibold text-[#1E293B]">
+                      {copyStatus}
+                    </p>
+                  )}
                 </section>
               )}
 
