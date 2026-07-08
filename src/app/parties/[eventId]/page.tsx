@@ -4,24 +4,26 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  clampWorkflowStep,
-  completeWorkflowIndex,
-  getStatusForWorkflowStep,
-  getWorkflowProgress,
-  getWorkflowStep,
+  completeWorkflowStep,
   getNextWorkflowStep,
+  getProgressPercent,
+  getWorkflowStep,
+  getWorkflowStepIndex,
+  isPartyWorkflowStepKey,
+  isWorkflowComplete,
   partyWorkflowSteps,
   type PartyWorkflowStep,
+  type PartyWorkflowStepKey,
 } from "@/lib/party-workflow";
 
 type EventTimelineItem = { id: string; title: string; body: string | null; icon: string | null; createdAt: string };
 type EventGuestRecord = { id: string; guestName: string | null; guestEmail?: string | null; guestPhone?: string | null; parentName?: string | null; status: string; waiverStatus?: string | null; checkedInAt: string | null; checkedOutAt?: string | null };
-type EventRecord = { id: string; eventNumber: string | null; title: string; eventDate: string; startTime: string; endTime: string; status: string; workflowStep?: number | null; packageName: string | null; guestOfHonor: string | null; depositAmount: number; depositStatus: string; depositMethod: string | null; balanceDue: number; notes: string; inviteUrl: string | null; confirmationUrl?: string | null; pendingExpiresAt?: string | null; timelineItems: EventTimelineItem[]; guests?: EventGuestRecord[] };
+type EventRecord = { id: string; eventNumber: string | null; title: string; eventDate: string; startTime: string; endTime: string; status: string; workflowStep?: string | number | null; packageName: string | null; guestOfHonor: string | null; depositAmount: number; depositStatus: string; depositMethod: string | null; balanceDue: number; notes: string; inviteUrl: string | null; confirmationUrl?: string | null; pendingExpiresAt?: string | null; timelineItems: EventTimelineItem[]; guests?: EventGuestRecord[] };
 type PartyGuest = { id: string; name: string; parentName: string; email: string; phone: string; status: string; waiver: string; checkedInAt: string | null; checkedOutAt: string | null };
-type Party = { id: string; childName: string; title: string; eventNumber: string; eventTypeName: string; date: string; time: string; status: string; rawStatus: string; workflowStep: number; packageName: string; room: string; guestCount: number; expectedCount: number; checkedInCount: number; checkedOutCount: number; noShowCount: number; waiverNeededCount: number; deposit: string; depositStatus: string; balanceDue: string; balanceDueNumber: number; notes: string; inviteUrl: string | null; confirmationUrl: string | null; pendingExpiresAt: string | null; timelineItems: EventTimelineItem[]; guests: PartyGuest[] };
+type Party = { id: string; childName: string; title: string; eventNumber: string; eventTypeName: string; date: string; time: string; status: string; rawStatus: string; workflowStep: PartyWorkflowStepKey; packageName: string; room: string; guestCount: number; expectedCount: number; checkedInCount: number; checkedOutCount: number; noShowCount: number; waiverNeededCount: number; deposit: string; depositStatus: string; balanceDue: string; balanceDueNumber: number; notes: string; inviteUrl: string | null; confirmationUrl: string | null; pendingExpiresAt: string | null; timelineItems: EventTimelineItem[]; guests: PartyGuest[] };
 type Guardrail = { type: "cancel" | "restore" | "advance" | "complete"; step?: PartyWorkflowStep | null; party: Party } | null;
 
-const fallbackParty: Party = { id: "", childName: "Guest of Honor", title: "Loading Party", eventNumber: "EVT", eventTypeName: "Birthday Party", date: "Date TBD", time: "Time TBD", status: "Loading", rawStatus: "PENDING", workflowStep: 0, packageName: "No package", room: "Main Party Room", guestCount: 0, expectedCount: 0, checkedInCount: 0, checkedOutCount: 0, noShowCount: 0, waiverNeededCount: 0, deposit: "$0.00", depositStatus: "PENDING", balanceDue: "$0.00", balanceDueNumber: 0, notes: "No notes yet.", inviteUrl: null, confirmationUrl: null, pendingExpiresAt: null, timelineItems: [], guests: [] };
+const fallbackParty: Party = { id: "", childName: "Guest of Honor", title: "Loading Party", eventNumber: "EVT", eventTypeName: "Birthday Party", date: "Date TBD", time: "Time TBD", status: "Loading", rawStatus: "PENDING", workflowStep: "PENDING", packageName: "No package", room: "Main Party Room", guestCount: 0, expectedCount: 0, checkedInCount: 0, checkedOutCount: 0, noShowCount: 0, waiverNeededCount: 0, deposit: "$0.00", depositStatus: "PENDING", balanceDue: "$0.00", balanceDueNumber: 0, notes: "No notes yet.", inviteUrl: null, confirmationUrl: null, pendingExpiresAt: null, timelineItems: [], guests: [] };
 
 function normalizeName(value: string) { return value.trim().toLowerCase(); }
 function makeSoftColor(hexColor: string) { if (!hexColor.startsWith("#") || hexColor.length !== 7) return "#F6F0E6"; return `${hexColor}22`; }
@@ -40,11 +42,16 @@ function getDepositStyles(depositStatus: string) { if (depositStatus === "CASH_C
 function getEventIcon(eventTypeName: string) { const name = normalizeName(eventTypeName); if (name.includes("party")) return "🎂"; if (name.includes("field")) return "🚌"; if (name.includes("private")) return "🔒"; return "★"; }
 function guessEventTypeName(event: EventRecord) { const title = event.title || ""; const packageName = event.packageName || ""; if (title.toLowerCase().includes("field") || packageName.toLowerCase().includes("field")) return "Field Trip"; if (title.toLowerCase().includes("private") || packageName.toLowerCase().includes("private")) return "Private Event"; return "Birthday Party"; }
 function normalizeGuestStatus(guest: EventGuestRecord) { if (guest.status === "CHECKED_OUT" || guest.checkedOutAt) return "Checked Out"; if (guest.status === "CHECKED_IN" || guest.checkedInAt) return "Checked In"; if (guest.status === "NO_SHOW") return "No Show"; return "Expected"; }
+function normalizeWorkflowStep(value: EventRecord["workflowStep"]): PartyWorkflowStepKey {
+  if (typeof value === "string" && isPartyWorkflowStepKey(value)) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return partyWorkflowSteps[Math.min(Math.max(Math.trunc(value), 0), partyWorkflowSteps.length - 1)]?.key ?? "PENDING";
+  return "PENDING";
+}
 
 function normalizeEventToParty(event: EventRecord): Party {
   const realGuests = event.guests ?? [];
   const guests = realGuests.map((guest) => ({ id: guest.id, name: guest.guestName || "Unnamed Guest", parentName: guest.parentName || "", email: guest.guestEmail || "", phone: guest.guestPhone || "", status: normalizeGuestStatus(guest), waiver: guest.waiverStatus === "SIGNED" ? "Valid" : "Needed", checkedInAt: guest.checkedInAt, checkedOutAt: guest.checkedOutAt ?? null }));
-  const workflowStep = event.status === "CANCELLED" ? clampWorkflowStep(event.workflowStep ?? 0) : clampWorkflowStep(event.workflowStep ?? 0);
+  const workflowStep = normalizeWorkflowStep(event.workflowStep);
   return { id: event.id, childName: event.guestOfHonor || "Guest of Honor", title: event.title, eventNumber: event.eventNumber || "EVT", eventTypeName: guessEventTypeName(event), date: formatDate(event.eventDate), time: `${formatTime(event.startTime)} - ${formatTime(event.endTime)}`, status: getStatusLabel(event.status), rawStatus: event.status, workflowStep, packageName: event.packageName || "No package", room: "Main Party Room", guestCount: Math.max(guests.length, event.guestOfHonor ? 1 : 0), expectedCount: realGuests.filter((guest) => guest.status === "EXPECTED").length, checkedInCount: realGuests.filter((guest) => guest.status === "CHECKED_IN").length, checkedOutCount: realGuests.filter((guest) => guest.status === "CHECKED_OUT").length, noShowCount: realGuests.filter((guest) => guest.status === "NO_SHOW").length, waiverNeededCount: guests.filter((guest) => guest.waiver !== "Valid").length, deposit: formatCurrency(event.depositAmount), depositStatus: event.depositStatus, balanceDue: formatCurrency(event.balanceDue), balanceDueNumber: event.balanceDue, notes: event.notes || "No notes yet.", inviteUrl: event.inviteUrl, confirmationUrl: event.confirmationUrl ?? null, pendingExpiresAt: event.pendingExpiresAt ?? null, timelineItems: event.timelineItems ?? [], guests };
 }
 
@@ -81,9 +88,10 @@ export default function PartyManagerPage() {
 
   const selectedPartyEventType = { color: "#FFB768" };
   const currentStep = getWorkflowStep(party.workflowStep);
+  const currentStepIndex = getWorkflowStepIndex(party.workflowStep);
   const nextStep = getNextWorkflowStep(party.workflowStep);
-  const progressPercent = getWorkflowProgress(party.workflowStep);
-  const completeAvailable = party.rawStatus !== "CANCELLED" && party.workflowStep >= completeWorkflowIndex;
+  const progressPercent = getProgressPercent(party.workflowStep);
+  const completeAvailable = party.rawStatus !== "CANCELLED" && isWorkflowComplete(party.workflowStep);
 
   const visibleGuests = useMemo(() => {
     const cleanQuery = guestSearchQuery.trim().toLowerCase();
@@ -97,6 +105,24 @@ export default function PartyManagerPage() {
     { label: "Guests", value: `${party.checkedInCount}/${Math.max(party.guestCount, 1)} checked in`, done: party.guestCount > 0 && party.checkedInCount >= party.guestCount, helper: "Checked in from RSVP list." },
     { label: "Balance", value: party.balanceDueNumber > 0 ? party.balanceDue : "Paid", done: party.balanceDueNumber <= 0, helper: party.balanceDueNumber > 0 ? "Collect at check-out." : "No balance due." },
   ];
+
+  useEffect(() => {
+    if (loadingEvent) return;
+    if (party.rawStatus === "CANCELLED") return;
+
+    const stageCardMap: Partial<Record<PartyWorkflowStepKey, string>> = {
+      PENDING: "readiness",
+      CONFIRMED: "readiness",
+      ROOM_SETUP: "readiness",
+      CHECK_IN: "guests",
+      PARTY_TIME: "timeline",
+      PAYMENT: "money",
+      CLEANUP: "readiness",
+    };
+
+    const nextOpenCard = stageCardMap[party.workflowStep];
+    if (nextOpenCard) setOpenCard(nextOpenCard);
+  }, [loadingEvent, party.rawStatus, party.workflowStep]);
 
   async function copyInviteLink() { if (!party.inviteUrl) return; try { await navigator.clipboard.writeText(party.inviteUrl); setCopyStatus("Copied!"); window.setTimeout(() => setCopyStatus(""), 1800); } catch { setCopyStatus("Copy failed"); window.setTimeout(() => setCopyStatus(""), 1800); } }
   async function copyConfirmationLink() { if (!party.confirmationUrl) return; try { await navigator.clipboard.writeText(party.confirmationUrl); setCopyStatus("Confirmation copied!"); window.setTimeout(() => setCopyStatus(""), 1800); } catch { setCopyStatus("Copy failed"); window.setTimeout(() => setCopyStatus(""), 1800); } }
@@ -120,11 +146,11 @@ export default function PartyManagerPage() {
   }
 
   async function runPartyWorkflowAction(type: "advance" | "complete") {
-    const requestedStep = type === "complete" ? completeWorkflowIndex : Math.min(party.workflowStep + 1, completeWorkflowIndex);
+    const requestedStep = type === "complete" ? completeWorkflowStep.key : nextStep?.key ?? completeWorkflowStep.key;
     setActivePartyAction(`${type}:${requestedStep}`);
     setActionError("");
     try {
-      const response = await fetch(`/api/events/${party.id}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workflowStep: requestedStep }) });
+      const response = await fetch(`/api/events/${party.id}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(type === "complete" ? { complete: true } : { workflowStep: requestedStep }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to update party workflow.");
       setGuardrail(null);
@@ -194,16 +220,16 @@ export default function PartyManagerPage() {
                   <div className="h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-[#1E293B] transition-all duration-300" style={{ width: `${progressPercent}%` }} /></div>
                   <div className="mt-3 grid grid-cols-7 gap-2 text-[11px] font-semibold text-[#6B7280]">
                     {partyWorkflowSteps.map((step) => {
-                      const isDone = party.workflowStep > step.index;
-                      const isCurrent = party.workflowStep === step.index && party.rawStatus !== "CANCELLED";
+                      const isDone = currentStepIndex > step.index;
+                      const isCurrent = currentStepIndex === step.index && party.rawStatus !== "CANCELLED";
                       return <span key={step.key} className={`${isCurrent ? "text-[#1E293B]" : isDone ? "text-[#155E75]" : ""}`}>{isDone ? "✓ " : isCurrent ? "● " : "○ "}{step.label}</span>;
                     })}
                   </div>
                   <div className="mt-4 flex flex-wrap items-center gap-3">
                     {party.rawStatus === "PENDING" && party.confirmationUrl && <button onClick={copyConfirmationLink} className="rounded-[10px] border border-[#B7D4FF] bg-white px-4 py-3 text-sm font-semibold text-[#0B55C6]">Copy Confirmation Link</button>}
                     {party.rawStatus === "PENDING" && <span className="text-xs font-semibold text-[#6B7280]">Hold expires: {formatHoldTime(party.pendingExpiresAt)}</span>}
-                    {party.rawStatus !== "CANCELLED" && !completeAvailable && nextStep && <button onClick={() => setGuardrail({ type: "advance", step: currentStep, party })} className="rounded-[10px] bg-[#1E293B] px-5 py-3 text-sm font-semibold text-white">{currentStep?.nextActionLabel ?? "Next Step"}</button>}
-                    {completeAvailable && party.rawStatus !== "COMPLETED" && <button onClick={() => setGuardrail({ type: "complete", party })} className="rounded-[10px] bg-[#1E293B] px-5 py-3 text-sm font-semibold text-white">Complete Party</button>}
+                    {party.rawStatus !== "CANCELLED" && !completeAvailable && nextStep && <div className="rounded-[12px] bg-white p-3"><p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8A6D3B]">Next Action</p><button onClick={() => setGuardrail({ type: "advance", step: currentStep, party })} className="rounded-[10px] bg-[#1E293B] px-5 py-3 text-sm font-semibold text-white">{currentStep?.nextActionLabel ?? "Next Step"}</button></div>}
+                    {completeAvailable && party.rawStatus !== "COMPLETED" && <div className="rounded-[12px] bg-white p-3"><p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8A6D3B]">Final Action</p><button onClick={() => setGuardrail({ type: "complete", party })} className="rounded-[10px] bg-[#1E293B] px-5 py-3 text-sm font-semibold text-white">Complete Party</button></div>}
                     {party.rawStatus === "COMPLETED" && <span className="rounded-[10px] bg-white px-4 py-3 text-sm font-semibold text-[#155E75]">Party Complete</span>}
                     {copyStatus && <span className="text-xs font-semibold text-[#155E75]">{copyStatus}</span>}
                   </div>

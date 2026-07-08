@@ -21,25 +21,21 @@ export type PartyWorkflowStep = {
   label: string;
   description: string;
   nextActionLabel: string;
-  actionLabel: string;
   confirmationTitle: string;
   confirmationBody: string;
   timelineTitle: string;
   timelineIcon: string;
   partyStatus: Exclude<PartyStatusValue, "CANCELLED">;
-  index: number;
 };
 
-const basePartyWorkflowSteps: Omit<PartyWorkflowStep, "index" | "actionLabel">[] = [
+export const partyWorkflowSteps: PartyWorkflowStep[] = [
   {
     key: "PENDING",
     label: "Pending",
-    description:
-      "The date and time are being held. Confirmation is required within 48 hours before the deposit is processed.",
+    description: "The date and time are being held. Confirmation is required within 48 hours before the deposit is processed.",
     nextActionLabel: "Confirm Party",
     confirmationTitle: "Confirm this party?",
-    confirmationBody:
-      "This will lock the party into the schedule, process the saved deposit method if one is attached, and move the party into the active workflow.",
+    confirmationBody: "This will lock the party into the schedule, process the saved deposit method if one is attached, and move the party into the active workflow.",
     timelineTitle: "Party Confirmed",
     timelineIcon: "✓",
     partyStatus: "PENDING",
@@ -50,8 +46,7 @@ const basePartyWorkflowSteps: Omit<PartyWorkflowStep, "index" | "actionLabel">[]
     description: "The party is confirmed. Staff can review details and prepare the room.",
     nextActionLabel: "Start Room Setup",
     confirmationTitle: "Start room setup?",
-    confirmationBody:
-      "This moves the party into room setup so staff can prep decorations, tables, food, and event details.",
+    confirmationBody: "This moves the party into room setup so staff can prep decorations, tables, food, and event details.",
     timelineTitle: "Room Setup Started",
     timelineIcon: "★",
     partyStatus: "CONFIRMED",
@@ -84,8 +79,7 @@ const basePartyWorkflowSteps: Omit<PartyWorkflowStep, "index" | "actionLabel">[]
     description: "The party is live. Staff can manage guests, activities, and timeline activity.",
     nextActionLabel: "Move to Payment",
     confirmationTitle: "Move to payment?",
-    confirmationBody:
-      "Use this when the party is nearing checkout and staff should collect any remaining balance.",
+    confirmationBody: "Use this when the party is nearing checkout and staff should collect any remaining balance.",
     timelineTitle: "Moved to Payment",
     timelineIcon: "$",
     partyStatus: "IN_PROGRESS",
@@ -114,69 +108,32 @@ const basePartyWorkflowSteps: Omit<PartyWorkflowStep, "index" | "actionLabel">[]
   },
 ];
 
-export const partyWorkflowSteps: PartyWorkflowStep[] = basePartyWorkflowSteps.map((step, index) => ({
-  ...step,
-  index,
-  actionLabel: step.nextActionLabel,
-}));
-
 export const partyWorkflowStepKeys = partyWorkflowSteps.map((step) => step.key);
 export const completeWorkflowStep = partyWorkflowSteps[partyWorkflowSteps.length - 1];
-export const completeWorkflowIndex = partyWorkflowSteps.length - 1;
 
 export function isPartyWorkflowStepKey(value: string): value is PartyWorkflowStepKey {
   return partyWorkflowStepKeys.includes(value as PartyWorkflowStepKey);
 }
 
-export function getWorkflowStepIndex(stepKey: string | number | null | undefined) {
-  if (typeof stepKey === "number" && Number.isFinite(stepKey)) {
-    return Math.min(Math.max(Math.trunc(stepKey), 0), completeWorkflowIndex);
-  }
-
-  if (typeof stepKey === "string") {
-    const trimmed = stepKey.trim();
-
-    if (/^\d+$/.test(trimmed)) {
-      return Math.min(Math.max(Number(trimmed), 0), completeWorkflowIndex);
-    }
-
-    const index = partyWorkflowSteps.findIndex((step) => step.key === trimmed);
-    return index >= 0 ? index : 0;
-  }
-
-  return 0;
+export function getWorkflowStep(stepKey: string | null | undefined) {
+  return partyWorkflowSteps.find((step) => step.key === stepKey) ?? partyWorkflowSteps[0];
 }
 
-export function clampWorkflowStep(stepKey: string | number | null | undefined) {
-  return getWorkflowStepIndex(stepKey);
+export function getWorkflowStepIndex(stepKey: string | null | undefined) {
+  const index = partyWorkflowSteps.findIndex((step) => step.key === stepKey);
+  return index >= 0 ? index : 0;
 }
 
-export function getWorkflowStep(stepKey: string | number | null | undefined) {
-  return partyWorkflowSteps[getWorkflowStepIndex(stepKey)] ?? partyWorkflowSteps[0];
-}
-
-export function getWorkflowStepKey(stepKey: string | number | null | undefined) {
-  return getWorkflowStep(stepKey).key;
-}
-
-export function getNextWorkflowStep(stepKey: string | number | null | undefined) {
+export function getNextWorkflowStep(stepKey: string | null | undefined) {
   const index = getWorkflowStepIndex(stepKey);
   return partyWorkflowSteps[index + 1] ?? null;
 }
 
-export function getProgressPercent(stepKey: string | number | null | undefined) {
+export function getProgressPercent(stepKey: string | null | undefined) {
   const index = getWorkflowStepIndex(stepKey);
   return Math.round(((index + 1) / partyWorkflowSteps.length) * 100);
 }
 
-export function getWorkflowProgress(stepKey: string | number | null | undefined) {
-  return getProgressPercent(stepKey);
-}
-
-export function isWorkflowComplete(stepKey: string | number | null | undefined) {
-  return getWorkflowStepIndex(stepKey) >= completeWorkflowIndex;
-}
-
-export function getStatusForWorkflowStep(stepKey: string | number | null | undefined): Exclude<PartyStatusValue, "CANCELLED"> {
-  return getWorkflowStep(stepKey).partyStatus;
+export function isWorkflowComplete(stepKey: string | null | undefined) {
+  return getWorkflowStepIndex(stepKey) >= partyWorkflowSteps.length - 1;
 }
