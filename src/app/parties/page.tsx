@@ -41,11 +41,18 @@ type EventRecord = {
   guests?: EventGuestRecord[];
 };
 
+type DashboardFilter = "active" | "today" | "upcoming" | "needs-attention" | "balance-due" | "waivers-needed" | "pending" | "cancelled" | "completed";
+
 type PartyCard = {
   id: string;
   title: string;
   eventNumber: string;
   eventTypeName: string;
+  eventDateValue: string;
+  startTimeValue: string;
+  endTimeValue: string;
+  startsAt: Date;
+  endsAt: Date;
   date: string;
   time: string;
   status: string;
@@ -64,7 +71,17 @@ const fallbackEventTypes: EventTypeOption[] = [
   { id: "field-trip", name: "Field Trip", description: "", color: "#7BAE7F", active: true },
 ];
 
-const partyFilters = ["All", "Today", "This Week", "Confirmed", "Pending", "Balance Due", "Waivers Needed", "Cancelled"];
+const filterOptions: { value: DashboardFilter; label: string }[] = [
+  { value: "active", label: "Active Parties" },
+  { value: "today", label: "Today" },
+  { value: "upcoming", label: "Upcoming" },
+  { value: "needs-attention", label: "Needs Attention" },
+  { value: "balance-due", label: "Balance Due" },
+  { value: "waivers-needed", label: "Waivers Needed" },
+  { value: "pending", label: "Pending" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+];
 
 const navItems = [
   { label: "Dashboard", icon: "▣", href: "/" },
@@ -116,6 +133,7 @@ function getStatusStyles(status: string) {
   if (status === "Confirmed" || status === "CONFIRMED") return "bg-[#D7F1EC] text-[#155E75]";
   if (status === "Pending" || status === "PENDING") return "bg-[#FFF0C4] text-[#92400E]";
   if (status === "In Progress" || status === "IN_PROGRESS") return "bg-[#EEF5FF] text-[#0B55C6]";
+  if (status === "Completed" || status === "COMPLETED") return "bg-[#F1F1F1] text-[#4B5563]";
   return "bg-[#F1F1F1] text-[#4B5563]";
 }
 
@@ -135,13 +153,25 @@ function guessEventTypeName(event: EventRecord) {
   return "Birthday Party";
 }
 
+function isSameDay(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
+}
+
 function normalizeEventToParty(event: EventRecord): PartyCard {
   const guests = event.guests ?? [];
+  const startsAt = new Date(event.startTime || event.eventDate);
+  const endsAt = new Date(event.endTime || event.eventDate);
+
   return {
     id: event.id,
     title: event.title,
     eventNumber: event.eventNumber || "EVT",
     eventTypeName: guessEventTypeName(event),
+    eventDateValue: event.eventDate,
+    startTimeValue: event.startTime,
+    endTimeValue: event.endTime,
+    startsAt,
+    endsAt,
     date: formatDate(event.eventDate),
     time: `${formatTime(event.startTime)} - ${formatTime(event.endTime)}`,
     status: getStatusLabel(event.status),
@@ -155,13 +185,17 @@ function normalizeEventToParty(event: EventRecord): PartyCard {
   };
 }
 
-function isToday(party: PartyCard) {
-  return party.date === formatDate(new Date().toISOString());
+function needsAttention(party: PartyCard) {
+  return party.status !== "Cancelled" && party.status !== "Completed" && (party.balanceDueNumber > 0 || party.waiverNeededCount > 0 || party.status === "Pending");
+}
+
+function isOperationalParty(party: PartyCard) {
+  return party.status !== "Cancelled" && party.status !== "Completed";
 }
 
 export default function PartiesPage() {
-  const [activeFilter, setActiveFilter] = useState("All");
-  const [activeEventTypeFilter, setActiveEventTypeFilter] = useState("All Types");
+  const [activeFilter, setActiveFilter] = useState<DashboardFilter>("active");
+  const [activeEventTypeFilter, setActiveEventTypeFilter] = useState("All Event Types");
   const [searchQuery, setSearchQuery] = useState("");
   const [eventTypes, setEventTypes] = useState<EventTypeOption[]>(fallbackEventTypes);
   const [parties, setParties] = useState<PartyCard[]>([]);
@@ -210,6 +244,14 @@ export default function PartiesPage() {
     return eventTypeMap[normalizeName(eventTypeName)] ?? fallbackEventTypes.find((eventType) => normalizeName(eventType.name) === normalizeName(eventTypeName)) ?? { id: eventTypeName, name: eventTypeName, description: "", color: "#B99AFF", active: true };
   }
 
+  const now = new Date();
+
+  const operationalParties = useMemo(() => parties.filter(isOperationalParty), [parties]);
+  const todayParties = useMemo(() => operationalParties.filter((party) => isSameDay(party.startsAt, now)), [operationalParties, now]);
+  const liveParties = useMemo(() => todayParties.filter((party) => party.startsAt <= now && party.endsAt >= now), [todayParties, now]);
+  const upcomingParties = useMemo(() => operationalParties.filter((party) => party.startsAt >= now).sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime()), [operationalParties, now]);
+  const nextParty = upcomingParties[0] ?? null;
+
   const filteredParties = useMemo(() => {
     const cleanQuery = searchQuery.trim().toLowerCase();
 
@@ -222,30 +264,36 @@ export default function PartiesPage() {
         party.packageName.toLowerCase().includes(cleanQuery);
 
       const matchesFilter =
-        activeFilter === "All" ||
-        (activeFilter === "Today" && isToday(party)) ||
-        activeFilter === "This Week" ||
-        (activeFilter === "Confirmed" && party.status === "Confirmed") ||
-        (activeFilter === "Pending" && party.status === "Pending") ||
-        (activeFilter === "Balance Due" && party.balanceDueNumber > 0) ||
-        (activeFilter === "Waivers Needed" && party.waiverNeededCount > 0) ||
-        (activeFilter === "Cancelled" && party.status === "Cancelled");
+        (activeFilter === "active" && isOperationalParty(party)) ||
+        (activeFilter === "today" && isOperationalParty(party) && isSameDay(party.startsAt, now)) ||
+        (activeFilter === "upcoming" && isOperationalParty(party) && party.startsAt >= now) ||
+        (activeFilter === "needs-attention" && needsAttention(party)) ||
+        (activeFilter === "balance-due" && isOperationalParty(party) && party.balanceDueNumber > 0) ||
+        (activeFilter === "waivers-needed" && isOperationalParty(party) && party.waiverNeededCount > 0) ||
+        (activeFilter === "pending" && isOperationalParty(party) && party.status === "Pending") ||
+        (activeFilter === "completed" && party.status === "Completed") ||
+        (activeFilter === "cancelled" && party.status === "Cancelled");
 
-      const matchesEventType = activeEventTypeFilter === "All Types" || normalizeName(party.eventTypeName) === normalizeName(activeEventTypeFilter);
+      const matchesEventType = activeEventTypeFilter === "All Event Types" || normalizeName(party.eventTypeName) === normalizeName(activeEventTypeFilter);
       return matchesSearch && matchesFilter && matchesEventType;
     });
-  }, [activeFilter, activeEventTypeFilter, parties, searchQuery]);
+  }, [activeEventTypeFilter, activeFilter, now, parties, searchQuery]);
 
   const stats = useMemo(() => {
     return {
-      total: parties.length,
-      today: parties.filter(isToday).length,
-      balanceDue: parties.filter((party) => party.balanceDueNumber > 0 && party.status !== "Cancelled").length,
-      waiversNeeded: parties.filter((party) => party.waiverNeededCount > 0 && party.status !== "Cancelled").length,
+      today: todayParties.length,
+      upcoming: upcomingParties.length,
+      needsAttention: operationalParties.filter(needsAttention).length,
+      guestsExpected: operationalParties.reduce((total, party) => total + party.guestCount, 0),
+      waiversNeeded: operationalParties.reduce((total, party) => total + party.waiverNeededCount, 0),
+      balancesDue: operationalParties.filter((party) => party.balanceDueNumber > 0).length,
     };
-  }, [parties]);
+  }, [operationalParties, todayParties.length, upcomingParties.length]);
 
   async function cancelParty(partyId: string) {
+    const confirmed = window.confirm("Cancel this party? It will be hidden from the active dashboard and can still be found with the Cancelled filter.");
+    if (!confirmed) return;
+
     setActiveCancelId(partyId);
     setCancelError("");
 
@@ -261,6 +309,8 @@ export default function PartiesPage() {
       setActiveCancelId("");
     }
   }
+
+  const activeFilterLabel = filterOptions.find((filter) => filter.value === activeFilter)?.label ?? "Active Parties";
 
   return (
     <main className="h-screen overflow-hidden bg-[#E7E3DA] p-5 text-[#202633] antialiased">
@@ -292,7 +342,7 @@ export default function PartiesPage() {
             <div>
               <p className="text-sm font-semibold text-[#8A6D3B]">Operations</p>
               <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">Party Control Center</h1>
-              <p className="mt-2 text-sm text-[#6B7280]">Choose a party or event to open the focused manager.</p>
+              <p className="mt-2 text-sm text-[#6B7280]">Today, upcoming events, and anything that needs attention.</p>
             </div>
             <div className="flex items-center gap-3">
               <Link href="/bookings" className="rounded-[10px] bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white">+ New Booking</Link>
@@ -300,80 +350,129 @@ export default function PartiesPage() {
             </div>
           </header>
 
-          <div className="grid h-[calc(100vh-125px)] grid-rows-[auto_auto_1fr] gap-4 overflow-hidden">
-            <section className="grid grid-cols-4 gap-3">
-              {[
-                { label: "Total Events", value: stats.total },
-                { label: "Today", value: stats.today },
-                { label: "Balance Due", value: stats.balanceDue },
-                { label: "Waivers Needed", value: stats.waiversNeeded },
-              ].map((item) => (
-                <div key={item.label} className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm">
-                  <p className="text-xs font-semibold text-[#6B7280]">{item.label}</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">{item.value}</p>
-                </div>
-              ))}
+          <div className="h-[calc(100vh-125px)] overflow-y-auto pr-1">
+            <section className="mb-4 grid grid-cols-4 gap-3">
+              <button onClick={() => setActiveFilter("today")} className="rounded-[14px] border border-black/10 bg-white p-4 text-left shadow-sm transition hover:bg-[#FAFAFA]">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8A6D3B]">Today's Parties</p>
+                <p className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">{stats.today}</p>
+              </button>
+              <button onClick={() => setActiveFilter("upcoming")} className="rounded-[14px] border border-black/10 bg-white p-4 text-left shadow-sm transition hover:bg-[#FAFAFA]">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8A6D3B]">Upcoming</p>
+                <p className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">{stats.upcoming}</p>
+              </button>
+              <button onClick={() => setActiveFilter("needs-attention")} className="rounded-[14px] border border-black/10 bg-white p-4 text-left shadow-sm transition hover:bg-[#FAFAFA]">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8A6D3B]">Needs Attention</p>
+                <p className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">{stats.needsAttention}</p>
+              </button>
+              <div className="rounded-[14px] border border-black/10 bg-white p-4 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8A6D3B]">Guests Expected</p>
+                <p className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">{stats.guestsExpected}</p>
+              </div>
             </section>
 
-            <section className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm">
-              <div className="grid grid-cols-[1fr_auto] gap-3">
+            <section className="mb-4 grid grid-cols-[1.1fr_1fr] gap-3">
+              <div className="rounded-[14px] border border-black/10 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-[#6B7280]">Next Up</p>
+                  <span className="rounded-full bg-[#F6F0E6] px-3 py-1 text-xs font-semibold text-[#1E293B]">Live schedule</span>
+                </div>
+                {nextParty ? (
+                  <div className="flex items-center justify-between gap-4 rounded-[12px] bg-[#F6F0E6] p-4">
+                    <div>
+                      <p className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">{nextParty.title}</p>
+                      <p className="mt-1 text-sm text-[#6B7280]">{nextParty.date} • {nextParty.time}</p>
+                    </div>
+                    <Link href={`/parties/${nextParty.id}`} className="rounded-[10px] bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white">Open</Link>
+                  </div>
+                ) : (
+                  <div className="rounded-[12px] bg-[#F6F0E6] p-4 text-sm text-[#6B7280]">No upcoming active parties.</div>
+                )}
+              </div>
+
+              <div className="rounded-[14px] border border-black/10 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-[#6B7280]">Live Now</p>
+                  <span className="rounded-full bg-[#F6F0E6] px-3 py-1 text-xs font-semibold text-[#1E293B]">{liveParties.length}</span>
+                </div>
+                {liveParties.length > 0 ? (
+                  <div className="space-y-2">
+                    {liveParties.slice(0, 2).map((party) => (
+                      <Link key={party.id} href={`/parties/${party.id}`} className="block rounded-[12px] bg-[#EEF5FF] p-3 transition hover:bg-[#E1EEFF]">
+                        <p className="text-sm font-semibold text-[#1E293B]">{party.title}</p>
+                        <p className="mt-1 text-xs text-[#6B7280]">{party.checkedInCount}/{Math.max(party.guestCount, 1)} checked in</p>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-[12px] bg-[#F6F0E6] p-4 text-sm text-[#6B7280]">Nothing live right now.</div>
+                )}
+              </div>
+            </section>
+
+            <section className="mb-4 rounded-[14px] border border-black/10 bg-white p-4 shadow-sm">
+              <div className="grid grid-cols-[1fr_180px_180px_auto] gap-3">
                 <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="rounded-[10px] border border-black/10 bg-[#F6F0E6] px-4 py-3 text-sm outline-none" placeholder="Search event, guest of honor, package, event number..." />
-                <span className="rounded-full bg-[#F6F0E6] px-4 py-3 text-xs font-semibold text-[#1E293B]">{loadingEvents ? "Loading..." : `${filteredParties.length} shown`}</span>
+                <select value={activeFilter} onChange={(event) => setActiveFilter(event.target.value as DashboardFilter)} className="rounded-[10px] border border-black/10 bg-[#F6F0E6] px-3 py-3 text-sm font-semibold text-[#1E293B] outline-none">
+                  {filterOptions.map((filter) => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
+                </select>
+                <select value={activeEventTypeFilter} onChange={(event) => setActiveEventTypeFilter(event.target.value)} className="rounded-[10px] border border-black/10 bg-[#F6F0E6] px-3 py-3 text-sm font-semibold text-[#1E293B] outline-none">
+                  <option>All Event Types</option>
+                  {eventTypes.map((eventType) => <option key={eventType.id}>{eventType.name}</option>)}
+                </select>
+                <span className="rounded-[10px] bg-[#F6F0E6] px-4 py-3 text-sm font-semibold text-[#1E293B]">{filteredParties.length} shown</span>
               </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {partyFilters.map((filter) => (
-                  <button key={filter} onClick={() => setActiveFilter(filter)} className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${activeFilter === filter ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#5B6270] hover:bg-[#EFE8DC]"}`}>{filter}</button>
-                ))}
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#6B7280]">
+                <span className="rounded-full bg-[#F6F0E6] px-3 py-1 font-semibold">View: {activeFilterLabel}</span>
+                <span className="rounded-full bg-[#F6F0E6] px-3 py-1 font-semibold">Waivers Needed: {stats.waiversNeeded}</span>
+                <span className="rounded-full bg-[#F6F0E6] px-3 py-1 font-semibold">Balances Due: {stats.balancesDue}</span>
               </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {["All Types", ...eventTypes.map((eventType) => eventType.name)].map((filter) => {
-                  const eventType = filter === "All Types" ? null : getEventType(filter);
-                  return (
-                    <button key={filter} onClick={() => setActiveEventTypeFilter(filter)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${activeEventTypeFilter === filter ? "border-[#1E293B] bg-[#1E293B] text-white" : "border-black/10 bg-white text-[#5B6270] hover:bg-[#F6F0E6]"}`} style={eventType && activeEventTypeFilter !== filter ? { borderColor: eventType.color, backgroundColor: makeSoftColor(eventType.color) } : undefined}>{filter}</button>
-                  );
-                })}
-              </div>
-
-              {cancelError && <p className="mt-3 rounded-[8px] bg-[#FFE0E9] px-3 py-2 text-xs font-semibold text-[#9F1239]">{cancelError}</p>}
             </section>
 
-            <section className="overflow-y-auto rounded-[12px] border border-black/10 bg-white p-4 shadow-sm">
-              {filteredParties.length > 0 ? (
-                <div className="grid grid-cols-2 gap-3">
-                  {filteredParties.map((party) => {
-                    const eventType = getEventType(party.eventTypeName);
-                    return (
-                      <div key={party.id} className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
-                        <div className="mb-3 flex items-start justify-between gap-3">
-                          <div>
-                            <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-[#1E293B]" style={{ backgroundColor: makeSoftColor(eventType.color) }}>{getEventIcon(party.eventTypeName)} {party.eventTypeName}</span>
-                            <h2 className="mt-3 text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">{party.title}</h2>
-                            <p className="mt-1 text-xs text-[#6B7280]">{party.eventNumber} • {party.date} • {party.time}</p>
-                          </div>
-                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusStyles(party.status)}`}>{party.status}</span>
-                        </div>
+            {cancelError && <div className="mb-4 rounded-[12px] border border-[#FCA5A5] bg-[#FFE0E9] p-4 text-sm font-semibold text-[#9F1239]">{cancelError}</div>}
 
-                        <div className="grid grid-cols-4 gap-2 text-xs">
-                          <div className="rounded-[8px] bg-white p-3"><p className="font-semibold text-[#1E293B]">{party.guestCount}</p><p className="text-[#6B7280]">Guests</p></div>
-                          <div className="rounded-[8px] bg-white p-3"><p className="font-semibold text-[#1E293B]">{party.checkedInCount}</p><p className="text-[#6B7280]">Checked In</p></div>
-                          <div className="rounded-[8px] bg-white p-3"><p className="font-semibold text-[#9F1239]">{party.waiverNeededCount}</p><p className="text-[#6B7280]">Waivers</p></div>
-                          <div className="rounded-[8px] bg-white p-3"><p className="font-semibold text-[#9F1239]">{party.balanceDue}</p><p className="text-[#6B7280]">Balance</p></div>
-                        </div>
+            <section className="grid grid-cols-3 gap-3 pb-6">
+              {loadingEvents ? (
+                <div className="col-span-3 rounded-[14px] border border-black/10 bg-white p-6 text-sm text-[#6B7280]">Loading parties...</div>
+              ) : filteredParties.length > 0 ? (
+                filteredParties.map((party) => {
+                  const eventType = getEventType(party.eventTypeName);
+                  const canCancel = party.status !== "Cancelled" && party.status !== "Completed";
 
-                        <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
-                          <Link href={`/parties/${party.id}`} className="rounded-[10px] bg-[#1E293B] px-4 py-3 text-center text-sm font-semibold text-white">Open Manager</Link>
-                          <button disabled={party.status === "Cancelled" || activeCancelId === party.id} onClick={() => cancelParty(party.id)} className="rounded-[10px] border border-[#FCA5A5] bg-white px-4 py-3 text-sm font-semibold text-[#9F1239] disabled:opacity-40">{activeCancelId === party.id ? "Cancelling..." : "Cancel"}</button>
+                  return (
+                    <article key={party.id} className="rounded-[14px] border border-black/10 bg-white p-4 shadow-sm">
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div>
+                          <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-[#1E293B]" style={{ backgroundColor: makeSoftColor(eventType.color) }}>
+                            {getEventIcon(party.eventTypeName)} {party.eventTypeName}
+                          </span>
+                          <h2 className="mt-3 text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">{party.title}</h2>
+                          <p className="mt-1 text-xs text-[#6B7280]">{party.eventNumber} • {party.date}</p>
+                          <p className="mt-1 text-xs text-[#6B7280]">{party.time}</p>
                         </div>
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusStyles(party.status)}`}>{party.status}</span>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="rounded-[10px] bg-[#F6F0E6] p-3"><p className="font-semibold text-[#6B7280]">Guests</p><p className="mt-1 font-semibold text-[#1E293B]">{party.checkedInCount}/{Math.max(party.guestCount, 1)}</p></div>
+                        <div className="rounded-[10px] bg-[#F6F0E6] p-3"><p className="font-semibold text-[#6B7280]">Waivers</p><p className="mt-1 font-semibold text-[#1E293B]">{party.waiverNeededCount}</p></div>
+                        <div className="rounded-[10px] bg-[#F6F0E6] p-3"><p className="font-semibold text-[#6B7280]">Balance</p><p className="mt-1 font-semibold text-[#1E293B]">{party.balanceDue}</p></div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+                        <Link href={`/parties/${party.id}`} className="rounded-[10px] bg-[#1E293B] px-4 py-3 text-center text-sm font-semibold text-white">Open Party</Link>
+                        {canCancel && (
+                          <button onClick={() => cancelParty(party.id)} disabled={activeCancelId === party.id} className="rounded-[10px] border border-[#FCA5A5] bg-[#FFF7F7] px-4 py-3 text-sm font-semibold text-[#9F1239] disabled:opacity-50">
+                            {activeCancelId === party.id ? "Cancelling..." : "Cancel"}
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })
               ) : (
-                <div className="rounded-[12px] border border-dashed border-black/20 bg-[#F6F0E6] p-8 text-center">
-                  <p className="font-semibold text-[#1E293B]">No events found</p>
-                  <p className="mt-2 text-sm text-[#6B7280]">Try a different filter or create a new booking.</p>
+                <div className="col-span-3 rounded-[14px] border border-dashed border-black/20 bg-white/70 p-8 text-center">
+                  <p className="font-semibold text-[#1E293B]">No parties found</p>
+                  <p className="mt-2 text-sm text-[#6B7280]">Try changing the view, event type, or search.</p>
                 </div>
               )}
             </section>
