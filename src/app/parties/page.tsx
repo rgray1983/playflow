@@ -38,6 +38,8 @@ type EventRecord = {
   timelineItems: EventTimelineItem[];
 };
 
+type PartyMode = "before" | "during" | "after";
+
 type Party = {
   id: string;
   childName: string;
@@ -63,7 +65,6 @@ type Party = {
   notes: string;
   inviteUrl: string | null;
   timelineItems: EventTimelineItem[];
-  inviteUrl: string | null;
   guests: {
     name: string;
     status: string;
@@ -167,6 +168,7 @@ function getStatusStyles(status: string) {
   if (status === "CONFIRMED" || status === "Confirmed") return "bg-[#D7F1EC] text-[#155E75]";
   if (status === "PENDING" || status === "Pending") return "bg-[#FFF0C4] text-[#92400E]";
   if (status === "IN_PROGRESS" || status === "In Progress") return "bg-[#EEF5FF] text-[#0B55C6]";
+  if (status === "COMPLETED" || status === "Completed") return "bg-[#F1F1F1] text-[#4B5563]";
   return "bg-[#F1F1F1] text-[#4B5563]";
 }
 
@@ -241,6 +243,12 @@ function normalizeEventToParty(event: EventRecord): Party {
   };
 }
 
+function getPartyMode(status: string): PartyMode {
+  if (status === "IN_PROGRESS" || status === "In Progress") return "during";
+  if (status === "COMPLETED" || status === "Completed") return "after";
+  return "before";
+}
+
 export default function PartiesPage() {
   const [activeFilter, setActiveFilter] = useState("All");
   const [activeEventTypeFilter, setActiveEventTypeFilter] = useState("All Types");
@@ -250,8 +258,7 @@ export default function PartiesPage() {
   const [eventTypes, setEventTypes] = useState<EventTypeOption[]>(fallbackEventTypes);
   const [parties, setParties] = useState<Party[]>(fallbackParties);
   const [loadingEvents, setLoadingEvents] = useState(true);
-  const [activeControlTab, setActiveControlTab] = useState("overview");
-  const [rsvpMenuOpen, setRsvpMenuOpen] = useState(false);
+  const [openCard, setOpenCard] = useState("next");
 
   useEffect(() => {
     async function loadPartyManagerData() {
@@ -326,6 +333,7 @@ export default function PartiesPage() {
 
   const selectedParty = parties.find((party) => party.id === selectedPartyId) ?? parties[0] ?? fallbackParties[0];
   const selectedPartyEventType = getEventType(selectedParty.eventTypeName);
+  const partyMode = getPartyMode(selectedParty.status);
 
   const eventReadiness = [
     {
@@ -353,15 +361,45 @@ export default function PartiesPage() {
   const completedReadiness = eventReadiness.filter((item) => item.done).length;
   const readinessPercent = Math.round((completedReadiness / eventReadiness.length) * 100);
 
-  async function copyRsvpLink() {
+  const checklist =
+    partyMode === "before"
+      ? [
+          { label: "Review booking details", done: true },
+          { label: "Send RSVP link", done: Boolean(selectedParty.inviteUrl) },
+          { label: "Collect waivers", done: selectedParty.waiverNeededCount === 0 },
+          { label: "Set up room", done: false },
+          { label: "Start party", done: false },
+        ]
+      : partyMode === "during"
+        ? [
+            { label: "Check in guests", done: selectedParty.checkedInCount > 0 },
+            { label: "Collect remaining balance", done: selectedParty.balanceDueNumber <= 0 },
+            { label: "Open POS ticket", done: false },
+            { label: "Close event", done: false },
+          ]
+        : [
+            { label: "Send thank-you email", done: false },
+            { label: "Save customer notes", done: false },
+            { label: "Invite to book again", done: false },
+          ];
+
+  const nextStep = checklist.find((item) => !item.done) ?? checklist[checklist.length - 1];
+
+  const primaryAction =
+    partyMode === "before"
+      ? selectedParty.waiverNeededCount > 0
+        ? "Send RSVP + Waiver Link"
+        : "Start Party"
+      : partyMode === "during"
+        ? selectedParty.balanceDueNumber > 0
+          ? "Collect Remaining Balance"
+          : "Complete Event"
+        : "Send Thank You";
+
+  function copyInviteLink() {
     if (!selectedParty.inviteUrl) return;
 
-    try {
-      await navigator.clipboard.writeText(selectedParty.inviteUrl);
-      alert("RSVP link copied.");
-    } catch {
-      alert(selectedParty.inviteUrl);
-    }
+    navigator.clipboard?.writeText(selectedParty.inviteUrl).catch(() => undefined);
   }
 
   return (
@@ -419,11 +457,11 @@ export default function PartiesPage() {
             </div>
           </header>
 
-          <div className="grid h-[calc(100vh-125px)] grid-cols-[390px_1fr] gap-3">
+          <div className="grid h-[calc(100vh-125px)] grid-cols-[360px_1fr_300px] gap-3">
             <section className="overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
               <div className="border-b border-black/10 p-4">
                 <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-[#1E293B]">Events From Booking Engine</p>
+                  <p className="text-sm font-semibold text-[#1E293B]">Events</p>
                   <span className="rounded-full bg-[#F6F0E6] px-3 py-1 text-xs font-semibold text-[#1E293B]">{loadingEvents ? "Loading..." : filteredParties.length}</span>
                 </div>
 
@@ -455,7 +493,7 @@ export default function PartiesPage() {
                   const isSelected = selectedParty.id === party.id;
 
                   return (
-                    <button key={party.id} onClick={() => { setSelectedPartyId(party.id); setRsvpMenuOpen(false); }} className={`w-full rounded-[10px] border p-4 text-left transition ${isSelected ? "border-[#1E293B] bg-[#1E293B] text-white" : "border-black/10 bg-[#F6F0E6] text-[#1E293B] hover:bg-[#EFE8DC]"}`}>
+                    <button key={party.id} onClick={() => setSelectedPartyId(party.id)} className={`w-full rounded-[10px] border p-4 text-left transition ${isSelected ? "border-[#1E293B] bg-[#1E293B] text-white" : "border-black/10 bg-[#F6F0E6] text-[#1E293B] hover:bg-[#EFE8DC]"}`}>
                       <div className="mb-3 flex items-start justify-between gap-3">
                         <div>
                           <div className="mb-2 flex items-center gap-2">
@@ -472,10 +510,8 @@ export default function PartiesPage() {
                       </div>
 
                       <div className={`grid grid-cols-2 gap-2 text-xs ${isSelected ? "text-white/70" : "text-[#6B7280]"}`}>
-                        <span>Deposit: {party.deposit}</span>
                         <span>Balance: {party.balanceDue}</span>
                         <span>Waivers: {party.waiverNeededCount} needed</span>
-                        <span>{party.checkedInCount}/{Math.max(party.guestCount, 1)} checked in</span>
                       </div>
                     </button>
                   );
@@ -484,7 +520,12 @@ export default function PartiesPage() {
             </section>
 
             <section className="overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
-              <div className="border-b border-black/10 p-5">
+              <div
+                className="border-b border-black/10 p-5"
+                style={{
+                  background: `linear-gradient(90deg, ${makeSoftColor(selectedPartyEventType.color)} 0%, #FFFFFF 65%)`,
+                }}
+              >
                 <div className="flex items-start justify-between gap-5">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -497,43 +538,17 @@ export default function PartiesPage() {
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">{selectedParty.title}</h2>
                       {selectedParty.inviteUrl && (
-                        <div className="relative">
-                          <button
-                            onClick={() => setRsvpMenuOpen((current) => !current)}
-                            className="rounded-full border border-[#B7D4FF] bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#0B55C6]"
-                          >
-                            RSVP Link
-                          </button>
-
-                          {rsvpMenuOpen && (
-                            <div className="absolute left-0 top-8 z-20 w-[260px] rounded-[12px] border border-black/10 bg-white p-3 text-left shadow-lg">
-                              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280]">Invite Link</p>
-                              <p className="mb-3 truncate rounded-[8px] bg-[#F6F0E6] px-3 py-2 text-xs text-[#1E293B]">
-                                {selectedParty.inviteUrl}
-                              </p>
-                              <div className="grid gap-2">
-                                <button onClick={copyRsvpLink} className="rounded-[8px] bg-[#1E293B] px-3 py-2 text-xs font-semibold text-white">
-                                  Copy Link
-                                </button>
-                                <button className="rounded-[8px] border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-[#1E293B]">
-                                  Email Link to Host
-                                </button>
-                                <a href={selectedParty.inviteUrl} target="_blank" className="rounded-[8px] border border-black/10 bg-white px-3 py-2 text-center text-xs font-semibold text-[#1E293B]">
-                                  Preview RSVP Page
-                                </a>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        <button onClick={copyInviteLink} className="rounded-full border border-[#B7D4FF] bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#0B55C6]">
+                          RSVP Link
+                        </button>
                       )}
                     </div>
                     <p className="mt-2 text-sm text-[#6B7280]">{selectedParty.eventNumber} • {selectedParty.date} • {selectedParty.time}</p>
                   </div>
 
-                  <div className="flex gap-2">
-                    <button className="rounded-[10px] border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#1E293B]">Edit</button>
-                    <button className="rounded-[10px] bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white">Start Event</button>
-                  </div>
+                  <button className="rounded-[10px] bg-[#1E293B] px-5 py-3 text-sm font-semibold text-white">
+                    {primaryAction}
+                  </button>
                 </div>
               </div>
 
@@ -541,11 +556,13 @@ export default function PartiesPage() {
                 <section className="mb-4 rounded-[14px] border border-black/10 bg-[#F6F0E6] p-4">
                   <div className="mb-4 flex items-center justify-between gap-4">
                     <div>
-                      <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Event Readiness</h3>
-                      <p className="mt-1 text-sm text-[#6B7280]">Everything staff needs before the party starts.</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8A6D3B]">
+                        {partyMode === "before" ? "Before Party" : partyMode === "during" ? "During Party" : "After Party"}
+                      </p>
+                      <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#1E293B]">Next Step: {nextStep.label}</h3>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-semibold tracking-[-0.04em] text-[#1E293B]">{readinessPercent}%</p>
+                      <p className="text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">{readinessPercent}%</p>
                       <p className="text-xs font-semibold text-[#6B7280]">Ready</p>
                     </div>
                   </div>
@@ -565,88 +582,94 @@ export default function PartiesPage() {
                   </div>
                 </section>
 
-                <div className="mb-4 grid grid-cols-4 gap-3">
-                  <button onClick={() => setActiveControlTab("overview")} className={`rounded-[10px] px-4 py-3 text-sm font-semibold ${activeControlTab === "overview" ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#5B6270]"}`}>Overview</button>
-                  <button onClick={() => setActiveControlTab("guests")} className={`rounded-[10px] px-4 py-3 text-sm font-semibold ${activeControlTab === "guests" ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#5B6270]"}`}>Guests</button>
-                  <button onClick={() => setActiveControlTab("payments")} className={`rounded-[10px] px-4 py-3 text-sm font-semibold ${activeControlTab === "payments" ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#5B6270]"}`}>Payments</button>
-                  <button onClick={() => setActiveControlTab("timeline")} className={`rounded-[10px] px-4 py-3 text-sm font-semibold ${activeControlTab === "timeline" ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#5B6270]"}`}>Timeline</button>
-                </div>
+                <section className="mb-4 rounded-[14px] border border-black/10 bg-white p-3">
+                  {[
+                    { key: "next", label: "Flight Checklist", detail: `${checklist.filter((item) => item.done).length}/${checklist.length} complete` },
+                    { key: "guests", label: "Guest Check-In", detail: `${selectedParty.checkedInCount}/${Math.max(selectedParty.guestCount, 1)} checked in` },
+                    { key: "money", label: "Payments", detail: selectedParty.balanceDueNumber > 0 ? selectedParty.balanceDue : "Paid" },
+                    { key: "timeline", label: "Timeline", detail: `${selectedParty.timelineItems.length} events` },
+                    { key: "details", label: "Details + Notes", detail: selectedParty.packageName },
+                  ].map((card) => (
+                    <button
+                      key={card.key}
+                      onClick={() => setOpenCard((current) => (current === card.key ? "" : card.key))}
+                      className={`mb-2 flex w-full items-center justify-between rounded-[10px] px-4 py-3 text-left transition last:mb-0 ${
+                        openCard === card.key ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#1E293B] hover:bg-[#EFE8DC]"
+                      }`}
+                    >
+                      <span className="text-sm font-semibold">{card.label}</span>
+                      <span className={`text-xs ${openCard === card.key ? "text-white/70" : "text-[#6B7280]"}`}>{card.detail}</span>
+                    </button>
+                  ))}
+                </section>
 
-                {activeControlTab === "overview" && (
-                  <div className="grid grid-cols-[1fr_330px] gap-4">
-                    <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
-                      <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Party Details</h3>
-                      <div className="mt-4 grid grid-cols-2 gap-3">
-                        <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Guest of Honor</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.childName}</p></div>
-                        <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Package</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.packageName}</p></div>
-                        <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Room</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.room}</p></div>
-                        <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Customer</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.host}</p></div>
-                      </div>
+                {openCard === "next" && (
+                  <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
+                    <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Flight Checklist</h3>
+                    <p className="mt-1 text-sm text-[#6B7280]">Only the next meaningful action stays visually important.</p>
 
-                      <div className="mt-3 rounded-[10px] bg-white p-4">
-                        <p className="text-xs font-semibold text-[#6B7280]">Notes / Balloon Colors</p>
-                        <p className="mt-2 text-sm text-[#1E293B]">{selectedParty.notes}</p>
-                      </div>
-                    </section>
+                    <div className="mt-4 space-y-2">
+                      {checklist.map((item, index) => {
+                        const isNext = item.label === nextStep.label;
 
-                    <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
-                      <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Quick Actions</h3>
-                      <div className="mt-4 space-y-2">
-                        <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">✓ Check In Guest</button>
-                        <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">✍ Send Waiver Link</button>
-                        <button onClick={copyRsvpLink} className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">🔗 Copy RSVP Link</button>
-                        <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">💵 Collect Remaining Balance</button>
-                        <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">🧾 Open POS Ticket</button>
-                        <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">🏁 Complete Event</button>
-                      </div>
-                    </section>
-                  </div>
+                        return (
+                          <div
+                            key={item.label}
+                            className={`flex items-center gap-3 rounded-[10px] p-4 ${
+                              isNext ? "border border-[#1E293B] bg-white" : item.done ? "bg-white/70" : "bg-white"
+                            }`}
+                          >
+                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${item.done ? "bg-[#D7F1EC] text-[#155E75]" : isNext ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#6B7280]"}`}>
+                              {item.done ? "✓" : index + 1}
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-semibold text-[#1E293B]">{item.label}</p>
+                              {isNext && <p className="mt-1 text-xs text-[#6B7280]">Recommended next action</p>}
+                            </div>
+                            {isNext && <button className="rounded-[8px] bg-[#1E293B] px-4 py-2 text-xs font-semibold text-white">{primaryAction}</button>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
                 )}
 
-                {activeControlTab === "guests" && (
+                {openCard === "guests" && (
                   <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
                     <div className="mb-3 flex items-start justify-between gap-4">
                       <div>
                         <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Guest Check-In + Waivers</h3>
-                        <p className="mt-1 text-sm text-[#6B7280]">Guests attach to this event record as waivers and check-ins are connected.</p>
+                        <p className="mt-1 text-sm text-[#6B7280]">Guests attach to this event as RSVPs, waivers, and check-ins are connected.</p>
                       </div>
                       <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#1E293B]">{selectedParty.guests.length} added</span>
                     </div>
 
                     <div className="mb-4 rounded-[10px] border border-black/10 bg-white p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280]">Add Guest To Event</p>
-                      <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2">
+                      <div className="grid grid-cols-[1fr_auto_auto] gap-2">
                         <input value={guestSearchQuery} onChange={(event) => setGuestSearchQuery(event.target.value)} className="rounded-[8px] border border-black/10 bg-[#F6F0E6] px-4 py-3 text-sm outline-none" placeholder="Search child, parent, phone, or email..." />
                         <button className="rounded-[8px] border border-[#B7D4FF] bg-[#EEF5FF] px-4 py-3 text-sm font-semibold text-[#0B55C6]">Search</button>
                         <button className="rounded-[8px] bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white">Sign Waiver Now</button>
                       </div>
                     </div>
 
-                    {selectedParty.guests.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        {selectedParty.guests.map((guest) => (
-                          <div key={guest.name} className="rounded-[10px] bg-white p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-semibold text-[#1E293B]">{guest.name}</p>
-                                <p className="mt-1 text-xs text-[#6B7280]">{guest.status}</p>
-                              </div>
-                              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getWaiverStyles(guest.waiver)}`}>Waiver {guest.waiver}</span>
+                    <div className="grid grid-cols-2 gap-3">
+                      {selectedParty.guests.map((guest) => (
+                        <div key={guest.name} className="rounded-[10px] bg-white p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-[#1E293B]">{guest.name}</p>
+                              <p className="mt-1 text-xs text-[#6B7280]">{guest.status}</p>
                             </div>
-                            <button className="mt-3 w-full rounded-[8px] bg-[#7BAE7F] px-3 py-2 text-sm font-semibold text-white">Check In Guest</button>
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getWaiverStyles(guest.waiver)}`}>Waiver {guest.waiver}</span>
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="rounded-[10px] border border-dashed border-black/20 bg-white/70 p-6 text-center">
-                        <p className="font-semibold text-[#1E293B]">No guests added yet</p>
-                        <p className="mt-2 text-sm text-[#6B7280]">Guests will appear here after they sign a waiver or staff adds them from search.</p>
-                      </div>
-                    )}
+                          <button className="mt-3 w-full rounded-[8px] bg-[#7BAE7F] px-3 py-2 text-sm font-semibold text-white">Check In Guest</button>
+                        </div>
+                      ))}
+                    </div>
                   </section>
                 )}
 
-                {activeControlTab === "payments" && (
+                {openCard === "money" && (
                   <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
                     <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Payments + Checkout</h3>
                     <div className="mt-4 grid grid-cols-3 gap-3">
@@ -654,14 +677,13 @@ export default function PartiesPage() {
                       <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Balance Due</p><p className="mt-2 font-semibold text-[#9F1239]">{selectedParty.balanceDue}</p><p className="mt-1 text-xs text-[#6B7280]">Due at checkout</p></div>
                       <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">POS Ticket</p><p className="mt-2 font-semibold text-[#1E293B]">Not Open</p><p className="mt-1 text-xs text-[#6B7280]">Coming next</p></div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3">
-                      <button className="rounded-[10px] bg-[#1E293B] px-4 py-4 text-sm font-semibold text-white">Collect Remaining Balance</button>
-                      <button className="rounded-[10px] bg-[#7BAE7F] px-4 py-4 text-sm font-semibold text-white">Complete Checkout</button>
-                    </div>
+                    {selectedParty.balanceDueNumber > 0 && (
+                      <button className="mt-4 w-full rounded-[10px] bg-[#1E293B] px-4 py-4 text-sm font-semibold text-white">Collect Remaining Balance</button>
+                    )}
                   </section>
                 )}
 
-                {activeControlTab === "timeline" && (
+                {openCard === "timeline" && (
                   <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
                     <div className="mb-3 flex items-center justify-between">
                       <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Event Timeline</h3>
@@ -685,8 +707,57 @@ export default function PartiesPage() {
                     </div>
                   </section>
                 )}
+
+                {openCard === "details" && (
+                  <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
+                    <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Details + Notes</h3>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Guest of Honor</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.childName}</p></div>
+                      <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Package</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.packageName}</p></div>
+                      <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Room</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.room}</p></div>
+                      <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Customer</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.host}</p></div>
+                    </div>
+                    <div className="mt-3 rounded-[10px] bg-white p-4">
+                      <p className="text-xs font-semibold text-[#6B7280]">Notes / Balloon Colors</p>
+                      <p className="mt-2 text-sm text-[#1E293B]">{selectedParty.notes}</p>
+                    </div>
+                  </section>
+                )}
               </div>
             </section>
+
+            <aside className="space-y-3 overflow-y-auto">
+              <section className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm">
+                <p className="text-sm font-semibold text-[#6B7280]">At a Glance</p>
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-[#6B7280]">Mode</span><span className="font-semibold capitalize text-[#1E293B]">{partyMode}</span></div>
+                  <div className="flex justify-between"><span className="text-[#6B7280]">Ready</span><span className="font-semibold text-[#1E293B]">{readinessPercent}%</span></div>
+                  <div className="flex justify-between"><span className="text-[#6B7280]">Guests</span><span className="font-semibold text-[#1E293B]">{selectedParty.checkedInCount}/{Math.max(selectedParty.guestCount, 1)}</span></div>
+                  <div className="flex justify-between"><span className="text-[#6B7280]">Balance</span><span className="font-semibold text-[#9F1239]">{selectedParty.balanceDue}</span></div>
+                </div>
+              </section>
+
+              {selectedParty.inviteUrl && (
+                <section className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm">
+                  <p className="text-sm font-semibold text-[#6B7280]">RSVP + Waiver Link</p>
+                  <p className="mt-2 break-all rounded-[8px] bg-[#F6F0E6] p-3 text-xs text-[#1E293B]">{selectedParty.inviteUrl}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button onClick={copyInviteLink} className="rounded-[8px] bg-[#1E293B] px-3 py-2 text-xs font-semibold text-white">Copy Link</button>
+                    <button className="rounded-[8px] border border-[#B7D4FF] bg-[#EEF5FF] px-3 py-2 text-xs font-semibold text-[#0B55C6]">Email Host</button>
+                  </div>
+                </section>
+              )}
+
+              <section className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm">
+                <p className="text-sm font-semibold text-[#6B7280]">Quiet Quick Actions</p>
+                <div className="mt-3 space-y-2">
+                  <button className="w-full rounded-[8px] bg-[#F6F0E6] px-3 py-2 text-left text-xs font-semibold text-[#1E293B]">Send Reminder</button>
+                  <button className="w-full rounded-[8px] bg-[#F6F0E6] px-3 py-2 text-left text-xs font-semibold text-[#1E293B]">Add Staff Note</button>
+                  <button className="w-full rounded-[8px] bg-[#F6F0E6] px-3 py-2 text-left text-xs font-semibold text-[#1E293B]">Open POS Ticket</button>
+                  <button className="w-full rounded-[8px] bg-[#F6F0E6] px-3 py-2 text-left text-xs font-semibold text-[#1E293B]">Print Receipt</button>
+                </div>
+              </section>
+            </aside>
           </div>
         </section>
       </div>
