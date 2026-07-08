@@ -52,9 +52,12 @@ type Party = {
   packageName: string;
   room: string;
   guestCount: number;
+  checkedInCount: number;
+  waiverNeededCount: number;
   deposit: string;
   depositStatus: string;
   balanceDue: string;
+  balanceDueNumber: number;
   addOns: string[];
   notes: string;
   timelineItems: EventTimelineItem[];
@@ -87,9 +90,12 @@ const fallbackParties: Party[] = [
     packageName: "Birthday Party Package",
     room: "Main Party Room",
     guestCount: 12,
+    checkedInCount: 2,
+    waiverNeededCount: 1,
     deposit: "$100.00",
     depositStatus: "CASH_COLLECTED",
     balanceDue: "$200.00",
+    balanceDueNumber: 200,
     addOns: ["Balloon Arch", "Balloon Columns"],
     notes: "Pink, teal, and white balloons. Birthday child loves princess themes.",
     timelineItems: [
@@ -103,7 +109,8 @@ const fallbackParties: Party[] = [
     ],
     guests: [
       { name: "Dava Gray", status: "Birthday Child", waiver: "Valid" },
-      { name: "Taylan Smith", status: "Expected", waiver: "Valid" },
+      { name: "Taylan Smith", status: "Checked In", waiver: "Valid" },
+      { name: "Liam Johnson", status: "Expected", waiver: "Needed" },
     ],
   },
 ];
@@ -155,6 +162,7 @@ function formatTimelineTime(value: string) {
 function getStatusStyles(status: string) {
   if (status === "CONFIRMED" || status === "Confirmed") return "bg-[#D7F1EC] text-[#155E75]";
   if (status === "PENDING" || status === "Pending") return "bg-[#FFF0C4] text-[#92400E]";
+  if (status === "IN_PROGRESS" || status === "In Progress") return "bg-[#EEF5FF] text-[#0B55C6]";
   return "bg-[#F1F1F1] text-[#4B5563]";
 }
 
@@ -197,9 +205,12 @@ function guessEventTypeName(event: EventRecord) {
 }
 
 function normalizeEventToParty(event: EventRecord): Party {
+  const guestName = event.guestOfHonor || "Guest of Honor";
+  const hasWaiverNeeded = Boolean(event.guestOfHonor);
+
   return {
     id: event.id,
-    childName: event.guestOfHonor || "Guest of Honor",
+    childName: guestName,
     title: event.title,
     eventNumber: event.eventNumber || "EVT",
     eventTypeName: guessEventTypeName(event),
@@ -211,14 +222,17 @@ function normalizeEventToParty(event: EventRecord): Party {
     status: event.status === "CONFIRMED" ? "Confirmed" : event.status === "PENDING" ? "Pending" : event.status,
     packageName: event.packageName || "No package",
     room: "Main Party Room",
-    guestCount: 0,
+    guestCount: event.guestOfHonor ? 1 : 0,
+    checkedInCount: 0,
+    waiverNeededCount: hasWaiverNeeded ? 1 : 0,
     deposit: formatCurrency(event.depositAmount),
     depositStatus: event.depositStatus,
     balanceDue: formatCurrency(event.balanceDue),
+    balanceDueNumber: event.balanceDue,
     addOns: [],
     notes: event.notes || "No notes yet.",
     timelineItems: event.timelineItems ?? [],
-    guests: event.guestOfHonor ? [{ name: event.guestOfHonor, status: "Guest of Honor", waiver: "Needed" }] : [],
+    guests: event.guestOfHonor ? [{ name: guestName, status: "Guest of Honor", waiver: "Needed" }] : [],
   };
 }
 
@@ -228,10 +242,10 @@ export default function PartiesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPartyId, setSelectedPartyId] = useState(fallbackParties[0].id);
   const [guestSearchQuery, setGuestSearchQuery] = useState("");
-  const [detailsExpanded, setDetailsExpanded] = useState(true);
   const [eventTypes, setEventTypes] = useState<EventTypeOption[]>(fallbackEventTypes);
   const [parties, setParties] = useState<Party[]>(fallbackParties);
   const [loadingEvents, setLoadingEvents] = useState(true);
+  const [activeControlTab, setActiveControlTab] = useState("overview");
 
   useEffect(() => {
     async function loadPartyManagerData() {
@@ -281,6 +295,7 @@ export default function PartiesPage() {
 
   const filteredParties = useMemo(() => {
     const cleanQuery = searchQuery.trim().toLowerCase();
+
     return parties.filter((party) => {
       const matchesSearch =
         !cleanQuery ||
@@ -294,7 +309,7 @@ export default function PartiesPage() {
         activeFilter === "All" ||
         (activeFilter === "Confirmed" && party.status === "Confirmed") ||
         (activeFilter === "Pending" && party.status === "Pending") ||
-        (activeFilter === "Balance Due" && party.balanceDue !== "$0.00") ||
+        (activeFilter === "Balance Due" && party.balanceDueNumber > 0) ||
         activeFilter === "This Week" ||
         activeFilter === "Today";
 
@@ -305,6 +320,32 @@ export default function PartiesPage() {
 
   const selectedParty = parties.find((party) => party.id === selectedPartyId) ?? parties[0] ?? fallbackParties[0];
   const selectedPartyEventType = getEventType(selectedParty.eventTypeName);
+
+  const eventReadiness = [
+    {
+      label: "Deposit",
+      value: getDepositBadge(selectedParty.depositStatus),
+      done: selectedParty.depositStatus !== "PENDING",
+    },
+    {
+      label: "Waivers",
+      value: selectedParty.waiverNeededCount === 0 ? "Complete" : `${selectedParty.waiverNeededCount} needed`,
+      done: selectedParty.waiverNeededCount === 0,
+    },
+    {
+      label: "Guests",
+      value: `${selectedParty.checkedInCount}/${Math.max(selectedParty.guestCount, 1)} checked in`,
+      done: selectedParty.guestCount > 0 && selectedParty.checkedInCount >= selectedParty.guestCount,
+    },
+    {
+      label: "Balance",
+      value: selectedParty.balanceDueNumber > 0 ? selectedParty.balanceDue : "Paid",
+      done: selectedParty.balanceDueNumber <= 0,
+    },
+  ];
+
+  const completedReadiness = eventReadiness.filter((item) => item.done).length;
+  const readinessPercent = Math.round((completedReadiness / eventReadiness.length) * 100);
 
   return (
     <main className="h-screen overflow-hidden bg-[#E7E3DA] p-5 text-[#202633] antialiased">
@@ -344,7 +385,7 @@ export default function PartiesPage() {
           <header className="mb-5 flex items-start justify-between gap-5">
             <div>
               <p className="text-sm font-semibold text-[#8A6D3B]">Operations</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">Party & Event Manager</h1>
+              <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">Party Control Center</h1>
             </div>
 
             <div className="flex items-center gap-3">
@@ -414,10 +455,10 @@ export default function PartiesPage() {
                       </div>
 
                       <div className={`grid grid-cols-2 gap-2 text-xs ${isSelected ? "text-white/70" : "text-[#6B7280]"}`}>
-                        <span>Package: {party.packageName}</span>
                         <span>Deposit: {party.deposit}</span>
                         <span>Balance: {party.balanceDue}</span>
-                        <span>{getDepositBadge(party.depositStatus)}</span>
+                        <span>Waivers: {party.waiverNeededCount} needed</span>
+                        <span>{party.checkedInCount}/{Math.max(party.guestCount, 1)} checked in</span>
                       </div>
                     </button>
                   );
@@ -442,130 +483,158 @@ export default function PartiesPage() {
 
                   <div className="flex gap-2">
                     <button className="rounded-[10px] border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#1E293B]">Edit</button>
-                    <button className="rounded-[10px] bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white">Party Check-In</button>
+                    <button className="rounded-[10px] bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white">Start Event</button>
                   </div>
                 </div>
               </div>
 
               <div className="h-full overflow-y-auto p-5 pb-24">
+                <section className="mb-4 rounded-[14px] border border-black/10 bg-[#F6F0E6] p-4">
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Event Readiness</h3>
+                      <p className="mt-1 text-sm text-[#6B7280]">Everything staff needs before the party starts.</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-semibold tracking-[-0.04em] text-[#1E293B]">{readinessPercent}%</p>
+                      <p className="text-xs font-semibold text-[#6B7280]">Ready</p>
+                    </div>
+                  </div>
+
+                  <div className="h-2 overflow-hidden rounded-full bg-white">
+                    <div className="h-full rounded-full bg-[#1E293B] transition-all duration-300" style={{ width: `${readinessPercent}%` }} />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-4 gap-3">
+                    {eventReadiness.map((item) => (
+                      <div key={item.label} className="rounded-[10px] bg-white p-4">
+                        <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-[#F6F0E6] text-sm font-semibold">{item.done ? "✓" : "!"}</div>
+                        <p className="text-xs font-semibold text-[#6B7280]">{item.label}</p>
+                        <p className="mt-1 text-sm font-semibold text-[#1E293B]">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
                 <div className="mb-4 grid grid-cols-4 gap-3">
-                  <div className="rounded-[12px] bg-[#F6F0E6] p-4"><p className="text-xs font-semibold text-[#6B7280]">Event Type</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.eventTypeName}</p></div>
-                  <div className="rounded-[12px] bg-[#F6F0E6] p-4"><p className="text-xs font-semibold text-[#6B7280]">Package</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.packageName}</p></div>
-                  <div className="rounded-[12px] bg-[#F6F0E6] p-4"><p className="text-xs font-semibold text-[#6B7280]">Deposit</p><p className="mt-2 font-semibold text-[#155E75]">{selectedParty.deposit}</p></div>
-                  <div className="rounded-[12px] bg-[#F6F0E6] p-4"><p className="text-xs font-semibold text-[#6B7280]">Balance Due</p><p className="mt-2 font-semibold text-[#9F1239]">{selectedParty.balanceDue}</p></div>
+                  <button onClick={() => setActiveControlTab("overview")} className={`rounded-[10px] px-4 py-3 text-sm font-semibold ${activeControlTab === "overview" ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#5B6270]"}`}>Overview</button>
+                  <button onClick={() => setActiveControlTab("guests")} className={`rounded-[10px] px-4 py-3 text-sm font-semibold ${activeControlTab === "guests" ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#5B6270]"}`}>Guests</button>
+                  <button onClick={() => setActiveControlTab("payments")} className={`rounded-[10px] px-4 py-3 text-sm font-semibold ${activeControlTab === "payments" ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#5B6270]"}`}>Payments</button>
+                  <button onClick={() => setActiveControlTab("timeline")} className={`rounded-[10px] px-4 py-3 text-sm font-semibold ${activeControlTab === "timeline" ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#5B6270]"}`}>Timeline</button>
                 </div>
 
-                <section className="mb-4 rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Event Details</h3>
-                      {!detailsExpanded && <p className="mt-1 text-sm text-[#6B7280]">{selectedParty.packageName} • Balance {selectedParty.balanceDue}</p>}
-                    </div>
+                {activeControlTab === "overview" && (
+                  <div className="grid grid-cols-[1fr_330px] gap-4">
+                    <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
+                      <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Party Details</h3>
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Guest of Honor</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.childName}</p></div>
+                        <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Package</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.packageName}</p></div>
+                        <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Room</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.room}</p></div>
+                        <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Customer</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.host}</p></div>
+                      </div>
 
-                    <div className="flex items-center gap-2">
-                      <button className="rounded-[8px] bg-white px-3 py-2 text-xs font-semibold">Contact Customer</button>
-                      <button onClick={() => setDetailsExpanded((current) => !current)} className="rounded-[8px] bg-white px-3 py-2 text-xs font-semibold">{detailsExpanded ? "Hide Details ↑" : "Show Details ↓"}</button>
-                    </div>
+                      <div className="mt-3 rounded-[10px] bg-white p-4">
+                        <p className="text-xs font-semibold text-[#6B7280]">Notes / Balloon Colors</p>
+                        <p className="mt-2 text-sm text-[#1E293B]">{selectedParty.notes}</p>
+                      </div>
+                    </section>
+
+                    <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
+                      <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Quick Actions</h3>
+                      <div className="mt-4 space-y-2">
+                        <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">✓ Check In Guest</button>
+                        <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">✍ Send Waiver Link</button>
+                        <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">💵 Collect Remaining Balance</button>
+                        <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">🧾 Open POS Ticket</button>
+                        <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">🏁 Complete Event</button>
+                      </div>
+                    </section>
                   </div>
+                )}
 
-                  {detailsExpanded && (
-                    <div className="mt-4 grid grid-cols-[1fr_320px] gap-3">
+                {activeControlTab === "guests" && (
+                  <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
+                    <div className="mb-3 flex items-start justify-between gap-4">
                       <div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Guest of Honor</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.childName}</p><p className="mt-1 text-xs text-[#6B7280]">{selectedParty.eventNumber}</p></div>
-                          <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Customer</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedParty.host}</p><p className="mt-1 text-xs text-[#6B7280]">{selectedParty.family}</p></div>
-                        </div>
-
-                        <div className="mt-3 rounded-[10px] bg-white p-4">
-                          <p className="text-xs font-semibold text-[#6B7280]">Notes</p>
-                          <p className="mt-2 text-sm text-[#1E293B]">{selectedParty.notes}</p>
-                        </div>
+                        <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Guest Check-In + Waivers</h3>
+                        <p className="mt-1 text-sm text-[#6B7280]">Guests attach to this event record as waivers and check-ins are connected.</p>
                       </div>
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#1E293B]">{selectedParty.guests.length} added</span>
+                    </div>
 
-                      <div className="rounded-[10px] bg-white p-4">
-                        <div className="mb-3 flex items-center justify-between">
-                          <p className="text-sm font-semibold text-[#1E293B]">Event Timeline</p>
-                          <span className="rounded-full bg-[#F6F0E6] px-3 py-1 text-xs font-semibold">{selectedParty.timelineItems.length}</span>
-                        </div>
+                    <div className="mb-4 rounded-[10px] border border-black/10 bg-white p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280]">Add Guest To Event</p>
+                      <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2">
+                        <input value={guestSearchQuery} onChange={(event) => setGuestSearchQuery(event.target.value)} className="rounded-[8px] border border-black/10 bg-[#F6F0E6] px-4 py-3 text-sm outline-none" placeholder="Search child, parent, phone, or email..." />
+                        <button className="rounded-[8px] border border-[#B7D4FF] bg-[#EEF5FF] px-4 py-3 text-sm font-semibold text-[#0B55C6]">Search</button>
+                        <button className="rounded-[8px] bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white">Sign Waiver Now</button>
+                      </div>
+                    </div>
 
-                        <div className="space-y-3">
-                          {selectedParty.timelineItems.length > 0 ? (
-                            selectedParty.timelineItems.map((item) => (
-                              <div key={item.id} className="flex gap-3 rounded-[8px] bg-[#F6F0E6] p-3">
-                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-semibold">{item.icon || "•"}</div>
-                                <div>
-                                  <p className="text-sm font-semibold text-[#1E293B]">{item.title}</p>
-                                  <p className="mt-1 text-xs text-[#6B7280]">{formatTimelineTime(item.createdAt)}</p>
-                                  {item.body && <p className="mt-1 text-xs text-[#6B7280]">{item.body}</p>}
-                                </div>
+                    {selectedParty.guests.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        {selectedParty.guests.map((guest) => (
+                          <div key={guest.name} className="rounded-[10px] bg-white p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold text-[#1E293B]">{guest.name}</p>
+                                <p className="mt-1 text-xs text-[#6B7280]">{guest.status}</p>
                               </div>
-                            ))
-                          ) : (
-                            <div className="rounded-[8px] bg-[#F6F0E6] p-3 text-xs text-[#6B7280]">Timeline will appear here as staff runs the event.</div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </section>
-
-                <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
-                  <div className="mb-3 flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Party Guest Check-In</h3>
-                      <p className="mt-1 text-sm text-[#6B7280]">Guests will attach to this event record as waivers and check-ins are connected.</p>
-                    </div>
-
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#1E293B]">{selectedParty.guests.length} added</span>
-                  </div>
-
-                  <div className="mb-4 rounded-[10px] border border-black/10 bg-white p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280]">Add Guest To Event</p>
-
-                    <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2">
-                      <input value={guestSearchQuery} onChange={(event) => setGuestSearchQuery(event.target.value)} className="rounded-[8px] border border-black/10 bg-[#F6F0E6] px-4 py-3 text-sm outline-none" placeholder="Search child, parent, phone, or email..." />
-                      <button className="rounded-[8px] border border-[#B7D4FF] bg-[#EEF5FF] px-4 py-3 text-sm font-semibold text-[#0B55C6]">Search</button>
-                      <button className="rounded-[8px] bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white">Sign Waiver Now</button>
-                    </div>
-
-                    {guestSearchQuery && (
-                      <div className="mt-3 rounded-[8px] border border-black/10 bg-[#F6F0E6] p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-[#1E293B]">Search result preview</p>
-                            <p className="mt-1 text-xs text-[#6B7280]">Matching families/children will appear here once connected to customer records.</p>
+                              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getWaiverStyles(guest.waiver)}`}>Waiver {guest.waiver}</span>
+                            </div>
+                            <button className="mt-3 w-full rounded-[8px] bg-[#7BAE7F] px-3 py-2 text-sm font-semibold text-white">Check In Guest</button>
                           </div>
-
-                          <button className="rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-[#1E293B]">Add To Event</button>
-                        </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-[10px] border border-dashed border-black/20 bg-white/70 p-6 text-center">
+                        <p className="font-semibold text-[#1E293B]">No guests added yet</p>
+                        <p className="mt-2 text-sm text-[#6B7280]">Guests will appear here after they sign a waiver or staff adds them from search.</p>
                       </div>
                     )}
-                  </div>
+                  </section>
+                )}
 
-                  {selectedParty.guests.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      {selectedParty.guests.map((guest) => (
-                        <div key={guest.name} className="rounded-[10px] bg-white p-4">
-                          <div className="flex items-start justify-between gap-3">
+                {activeControlTab === "payments" && (
+                  <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
+                    <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Payments + Checkout</h3>
+                    <div className="mt-4 grid grid-cols-3 gap-3">
+                      <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Deposit</p><p className="mt-2 font-semibold text-[#155E75]">{selectedParty.deposit}</p><p className="mt-1 text-xs text-[#6B7280]">{getDepositBadge(selectedParty.depositStatus)}</p></div>
+                      <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Balance Due</p><p className="mt-2 font-semibold text-[#9F1239]">{selectedParty.balanceDue}</p><p className="mt-1 text-xs text-[#6B7280]">Due at checkout</p></div>
+                      <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">POS Ticket</p><p className="mt-2 font-semibold text-[#1E293B]">Not Open</p><p className="mt-1 text-xs text-[#6B7280]">Coming next</p></div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <button className="rounded-[10px] bg-[#1E293B] px-4 py-4 text-sm font-semibold text-white">Collect Remaining Balance</button>
+                      <button className="rounded-[10px] bg-[#7BAE7F] px-4 py-4 text-sm font-semibold text-white">Complete Checkout</button>
+                    </div>
+                  </section>
+                )}
+
+                {activeControlTab === "timeline" && (
+                  <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Event Timeline</h3>
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold">{selectedParty.timelineItems.length}</span>
+                    </div>
+                    <div className="space-y-3">
+                      {selectedParty.timelineItems.length > 0 ? (
+                        selectedParty.timelineItems.map((item) => (
+                          <div key={item.id} className="flex gap-3 rounded-[8px] bg-white p-3">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F6F0E6] text-xs font-semibold">{item.icon || "•"}</div>
                             <div>
-                              <p className="font-semibold text-[#1E293B]">{guest.name}</p>
-                              <p className="mt-1 text-xs text-[#6B7280]">{guest.status}</p>
+                              <p className="text-sm font-semibold text-[#1E293B]">{item.title}</p>
+                              <p className="mt-1 text-xs text-[#6B7280]">{formatTimelineTime(item.createdAt)}</p>
+                              {item.body && <p className="mt-1 text-xs text-[#6B7280]">{item.body}</p>}
                             </div>
-
-                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getWaiverStyles(guest.waiver)}`}>Waiver {guest.waiver}</span>
                           </div>
-
-                          <button className="mt-3 w-full rounded-[8px] bg-[#7BAE7F] px-3 py-2 text-sm font-semibold text-white">Check In Guest</button>
-                        </div>
-                      ))}
+                        ))
+                      ) : (
+                        <div className="rounded-[8px] bg-white p-4 text-sm text-[#6B7280]">Timeline will appear here as staff runs the event.</div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="rounded-[10px] border border-dashed border-black/20 bg-white/70 p-6 text-center">
-                      <p className="font-semibold text-[#1E293B]">No guests added yet</p>
-                      <p className="mt-2 text-sm text-[#6B7280]">Guests will appear here after they sign a waiver or staff adds them from search.</p>
-                    </div>
-                  )}
-                </section>
+                  </section>
+                )}
               </div>
             </section>
           </div>
