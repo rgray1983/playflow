@@ -1,44 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  getNextWorkflowStep,
+  getWorkflowStep,
+  isWorkflowStatus,
+} from "@/lib/party-workflow";
 
 type Params = {
   params: Promise<{ eventId: string }>;
-};
-
-const allowedStatuses = new Set([
-  "PENDING",
-  "CONFIRMED",
-  "READY",
-  "IN_PROGRESS",
-  "CLEANING_UP",
-  "COMPLETED",
-]);
-
-const statusLabels: Record<string, string> = {
-  PENDING: "Pending",
-  CONFIRMED: "Confirmed",
-  READY: "Ready",
-  IN_PROGRESS: "In Progress",
-  CLEANING_UP: "Cleaning Up",
-  COMPLETED: "Completed",
-};
-
-const timelineTitles: Record<string, string> = {
-  PENDING: "Party Marked Pending",
-  CONFIRMED: "Party Confirmed",
-  READY: "Party Marked Ready",
-  IN_PROGRESS: "Party Started",
-  CLEANING_UP: "Party Moved to Cleaning Up",
-  COMPLETED: "Party Completed",
-};
-
-const timelineIcons: Record<string, string> = {
-  PENDING: "…",
-  CONFIRMED: "✓",
-  READY: "★",
-  IN_PROGRESS: "▶",
-  CLEANING_UP: "↻",
-  COMPLETED: "✓",
 };
 
 function jsonError(error: unknown, fallbackMessage: string, status = 500) {
@@ -55,7 +24,7 @@ export async function POST(request: Request, { params }: Params) {
     const body = await request.json().catch(() => ({}));
     const nextStatus = typeof body.status === "string" ? body.status : "";
 
-    if (!allowedStatuses.has(nextStatus)) {
+    if (!isWorkflowStatus(nextStatus)) {
       return NextResponse.json({ error: "Unsupported party status." }, { status: 400 });
     }
 
@@ -72,9 +41,16 @@ export async function POST(request: Request, { params }: Params) {
       );
     }
 
-    if (party.status === nextStatus) {
-      return NextResponse.json({ event: party });
+    const expectedNextStep = getNextWorkflowStep(party.status);
+
+    if (!expectedNextStep || expectedNextStep.status !== nextStatus) {
+      return NextResponse.json(
+        { error: "This workflow step is not the next recommended action." },
+        { status: 400 },
+      );
     }
+
+    const nextStep = getWorkflowStep(nextStatus);
 
     const updatedParty = await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(
@@ -87,12 +63,12 @@ export async function POST(request: Request, { params }: Params) {
         data: {
           tenantId: party.tenantId,
           partyId: party.id,
-          icon: timelineIcons[nextStatus] ?? "•",
-          title: timelineTitles[nextStatus] ?? `Party status changed to ${statusLabels[nextStatus]}`,
-          body: `${party.eventNumber || party.title} was moved to ${statusLabels[nextStatus]} by staff.`,
+          icon: nextStep.timelineIcon,
+          title: nextStep.timelineTitle,
+          body: `${party.eventNumber || party.title} was moved to ${nextStep.label} by staff.`,
           metadata: {
             source: "party-manager",
-            action: "update-party-status",
+            action: "advance-party-workflow",
             previousStatus: party.status,
             nextStatus,
           },
