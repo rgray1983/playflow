@@ -26,16 +26,21 @@ export type PartyWorkflowStep = {
   timelineTitle: string;
   timelineIcon: string;
   partyStatus: Exclude<PartyStatusValue, "CANCELLED">;
+  index: number;
 };
 
-export const partyWorkflowSteps: PartyWorkflowStep[] = [
+type BasePartyWorkflowStep = Omit<PartyWorkflowStep, "index">;
+
+const basePartyWorkflowSteps: BasePartyWorkflowStep[] = [
   {
     key: "PENDING",
     label: "Pending",
-    description: "The date and time are being held. Confirmation is required within 48 hours before the deposit is processed.",
+    description:
+      "The date and time are being held. Confirmation is required within 48 hours before the deposit is processed.",
     nextActionLabel: "Confirm Party",
     confirmationTitle: "Confirm this party?",
-    confirmationBody: "This will lock the party into the schedule, process the saved deposit method if one is attached, and move the party into the active workflow.",
+    confirmationBody:
+      "This will lock the party into the schedule, process the saved deposit method if one is attached, and move the party into the active workflow.",
     timelineTitle: "Party Confirmed",
     timelineIcon: "✓",
     partyStatus: "PENDING",
@@ -46,7 +51,8 @@ export const partyWorkflowSteps: PartyWorkflowStep[] = [
     description: "The party is confirmed. Staff can review details and prepare the room.",
     nextActionLabel: "Start Room Setup",
     confirmationTitle: "Start room setup?",
-    confirmationBody: "This moves the party into room setup so staff can prep decorations, tables, food, and event details.",
+    confirmationBody:
+      "This moves the party into room setup so staff can prep decorations, tables, food, and event details.",
     timelineTitle: "Room Setup Started",
     timelineIcon: "★",
     partyStatus: "CONFIRMED",
@@ -79,7 +85,8 @@ export const partyWorkflowSteps: PartyWorkflowStep[] = [
     description: "The party is live. Staff can manage guests, activities, and timeline activity.",
     nextActionLabel: "Move to Payment",
     confirmationTitle: "Move to payment?",
-    confirmationBody: "Use this when the party is nearing checkout and staff should collect any remaining balance.",
+    confirmationBody:
+      "Use this when the party is nearing checkout and staff should collect any remaining balance.",
     timelineTitle: "Moved to Payment",
     timelineIcon: "$",
     partyStatus: "IN_PROGRESS",
@@ -107,6 +114,11 @@ export const partyWorkflowSteps: PartyWorkflowStep[] = [
     partyStatus: "CLEANING_UP",
   },
 ];
+
+export const partyWorkflowSteps: PartyWorkflowStep[] = basePartyWorkflowSteps.map((step, index) => ({
+  ...step,
+  index,
+}));
 
 export const partyWorkflowStepKeys = partyWorkflowSteps.map((step) => step.key);
 export const completeWorkflowStep = partyWorkflowSteps[partyWorkflowSteps.length - 1];
