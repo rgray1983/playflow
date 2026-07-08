@@ -130,6 +130,17 @@ function serializeParty(party: {
     icon: string | null;
     createdAt: Date;
   }[];
+  guests?: {
+    id: string;
+    guestName: string | null;
+    guestEmail?: string | null;
+    guestPhone?: string | null;
+    parentName?: string | null;
+    status: string;
+    waiverStatus?: string | null;
+    waiverSignedAt?: Date | null;
+    checkedInAt: Date | null;
+  }[];
 }) {
   return {
     id: party.id,
@@ -149,6 +160,17 @@ function serializeParty(party: {
     inviteToken: party.inviteToken,
     inviteUrl: party.inviteUrl,
     timelineItems: party.timelineItems ?? [],
+    guests: (party.guests ?? []).map((guest) => ({
+      id: guest.id,
+      guestName: guest.guestName,
+      guestEmail: guest.guestEmail ?? null,
+      guestPhone: guest.guestPhone ?? null,
+      parentName: guest.parentName ?? null,
+      status: guest.status,
+      waiverStatus: guest.waiverStatus ?? "NEEDED",
+      waiverSignedAt: guest.waiverSignedAt ?? null,
+      checkedInAt: guest.checkedInAt,
+    })),
   };
 }
 
@@ -185,6 +207,11 @@ export async function GET() {
         tenantId: tenant.id,
       },
       include: {
+        guests: {
+          orderBy: {
+            createdAt: "asc",
+          },
+        },
         timelineItems: {
           orderBy: {
             createdAt: "desc",
@@ -350,6 +377,11 @@ export async function POST(request: Request) {
           id: party.id,
         },
         include: {
+          guests: {
+            orderBy: {
+              createdAt: "asc",
+            },
+          },
           timelineItems: {
             orderBy: {
               createdAt: "desc",

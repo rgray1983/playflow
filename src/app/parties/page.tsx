@@ -36,6 +36,17 @@ type EventRecord = {
   notes: string;
   inviteUrl: string | null;
   timelineItems: EventTimelineItem[];
+  guests?: {
+    id: string;
+    guestName: string | null;
+    guestEmail?: string | null;
+    guestPhone?: string | null;
+    parentName?: string | null;
+    status: string;
+    waiverStatus?: string | null;
+    waiverSignedAt?: string | null;
+    checkedInAt: string | null;
+  }[];
 };
 
 type PartyMode = "before" | "during" | "after";
@@ -65,6 +76,17 @@ type Party = {
   notes: string;
   inviteUrl: string | null;
   timelineItems: EventTimelineItem[];
+  guests?: {
+    id: string;
+    guestName: string | null;
+    guestEmail?: string | null;
+    guestPhone?: string | null;
+    parentName?: string | null;
+    status: string;
+    waiverStatus?: string | null;
+    waiverSignedAt?: string | null;
+    checkedInAt: string | null;
+  }[];
   guests: {
     name: string;
     status: string;
@@ -211,12 +233,30 @@ function guessEventTypeName(event: EventRecord) {
 }
 
 function normalizeEventToParty(event: EventRecord): Party {
-  const guestName = event.guestOfHonor || "Guest of Honor";
-  const hasWaiverNeeded = Boolean(event.guestOfHonor);
+  const fallbackGuestName = event.guestOfHonor || "Guest of Honor";
+  const realGuests = event.guests ?? [];
+  const guests =
+    realGuests.length > 0
+      ? realGuests.map((guest) => ({
+          name: guest.guestName || "Unnamed Guest",
+          status:
+            guest.status === "CHECKED_IN"
+              ? "Checked In"
+              : guest.status === "CHECKED_OUT"
+                ? "Checked Out"
+                : "Expected",
+          waiver: guest.waiverStatus === "SIGNED" ? "Valid" : "Needed",
+        }))
+      : event.guestOfHonor
+        ? [{ name: fallbackGuestName, status: "Guest of Honor", waiver: "Needed" }]
+        : [];
+
+  const checkedInCount = realGuests.filter((guest) => Boolean(guest.checkedInAt)).length;
+  const waiverNeededCount = guests.filter((guest) => guest.waiver !== "Valid").length;
 
   return {
     id: event.id,
-    childName: guestName,
+    childName: fallbackGuestName,
     title: event.title,
     eventNumber: event.eventNumber || "EVT",
     eventTypeName: guessEventTypeName(event),
@@ -228,9 +268,9 @@ function normalizeEventToParty(event: EventRecord): Party {
     status: event.status === "CONFIRMED" ? "Confirmed" : event.status === "PENDING" ? "Pending" : event.status,
     packageName: event.packageName || "No package",
     room: "Main Party Room",
-    guestCount: event.guestOfHonor ? 1 : 0,
-    checkedInCount: 0,
-    waiverNeededCount: hasWaiverNeeded ? 1 : 0,
+    guestCount: Math.max(guests.length, event.guestOfHonor ? 1 : 0),
+    checkedInCount,
+    waiverNeededCount,
     deposit: formatCurrency(event.depositAmount),
     depositStatus: event.depositStatus,
     balanceDue: formatCurrency(event.balanceDue),
@@ -239,7 +279,7 @@ function normalizeEventToParty(event: EventRecord): Party {
     notes: event.notes || "No notes yet.",
     inviteUrl: event.inviteUrl,
     timelineItems: event.timelineItems ?? [],
-    guests: event.guestOfHonor ? [{ name: guestName, status: "Guest of Honor", waiver: "Needed" }] : [],
+    guests,
   };
 }
 
@@ -652,9 +692,10 @@ export default function PartiesPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      {selectedParty.guests.map((guest) => (
-                        <div key={guest.name} className="rounded-[10px] bg-white p-4">
+                    {selectedParty.guests.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        {selectedParty.guests.map((guest) => (
+                          <div key={guest.name} className="rounded-[10px] bg-white p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="font-semibold text-[#1E293B]">{guest.name}</p>
@@ -662,10 +703,18 @@ export default function PartiesPage() {
                             </div>
                             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getWaiverStyles(guest.waiver)}`}>Waiver {guest.waiver}</span>
                           </div>
-                          <button className="mt-3 w-full rounded-[8px] bg-[#7BAE7F] px-3 py-2 text-sm font-semibold text-white">Check In Guest</button>
-                        </div>
-                      ))}
-                    </div>
+                            <button className="mt-3 w-full rounded-[8px] bg-[#7BAE7F] px-3 py-2 text-sm font-semibold text-white">Check In Guest</button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-[10px] border border-dashed border-black/20 bg-white/70 p-6 text-center">
+                        <p className="font-semibold text-[#1E293B]">No guests added yet</p>
+                        <p className="mt-2 text-sm text-[#6B7280]">
+                          Send the RSVP link so guests can add themselves and sign the waiver before the party.
+                        </p>
+                      </div>
+                    )}
                   </section>
                 )}
 

@@ -475,7 +475,12 @@ model PartyGuest {
   partyId     String
   childId     String?
   guestName   String?
+  guestEmail  String?
+  guestPhone  String?
+  parentName  String?
   status      PartyGuestStatus @default(EXPECTED)
+  waiverStatus String          @default("NEEDED")
+  waiverSignedAt DateTime?
   checkedInAt DateTime?
   checkedOutAt DateTime?
   notes       String?
@@ -490,6 +495,7 @@ model PartyGuest {
   @@index([partyId])
   @@index([childId])
   @@index([status])
+  @@index([waiverStatus])
 }
 
 model PartyAddOn {
