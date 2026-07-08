@@ -58,13 +58,6 @@ function addDuration(startTime: Date, minutes = 120) {
   return new Date(startTime.getTime() + minutes * 60 * 1000);
 }
 
-function toDepositStatus(value: CreateEventPayload["depositStatus"]) {
-  if (value === "cash") return "CASH_COLLECTED";
-  if (value === "card") return "CARD_COLLECTED";
-  if (value === "waived") return "WAIVED";
-  return "PENDING";
-}
-
 function toPaymentMethod(value: CreateEventPayload["depositStatus"]) {
   if (value === "cash") return "CASH";
   if (value === "card") return "CARD";
@@ -79,10 +72,10 @@ function serializeParty(party: {
   startTime: Date;
   endTime: Date;
   status: string;
-  workflowStep?: number | null;
+  workflowStep?: string | null;
   confirmationToken?: string | null;
   confirmationUrl?: string | null;
-  pendingExpiresAt?: Date | null;
+  confirmationExpiresAt?: Date | null;
   confirmedAt?: Date | null;
   packageName: string | null;
   guestOfHonor: string | null;
@@ -115,10 +108,11 @@ function serializeParty(party: {
     startTime: party.startTime,
     endTime: party.endTime,
     status: party.status,
-    workflowStep: party.workflowStep ?? 0,
+    workflowStep: party.workflowStep ?? "PENDING",
     confirmationToken: party.confirmationToken ?? null,
     confirmationUrl: party.confirmationUrl ?? null,
-    pendingExpiresAt: party.pendingExpiresAt ?? null,
+    pendingExpiresAt: party.confirmationExpiresAt ?? null,
+    confirmationExpiresAt: party.confirmationExpiresAt ?? null,
     confirmedAt: party.confirmedAt ?? null,
     packageName: party.packageName,
     guestOfHonor: party.guestOfHonor,
@@ -207,8 +201,7 @@ export async function POST(request: Request) {
     const inviteUrl = createUrl("rsvp", inviteToken);
     const confirmationToken = createToken();
     const confirmationUrl = createUrl("confirm-party", confirmationToken);
-    const pendingExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
-    const depositStatus = toDepositStatus(body.depositStatus);
+    const confirmationExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
     const depositMethod = toPaymentMethod(body.depositStatus);
     const depositAmount = body.depositStatus === "waived" ? new Prisma.Decimal(0) : toDecimal(body.depositAmount);
     const balanceDue = toDecimal(body.balanceDue);
@@ -222,7 +215,7 @@ export async function POST(request: Request) {
           inviteUrl,
           confirmationToken,
           confirmationUrl,
-          pendingExpiresAt,
+          confirmationExpiresAt,
           eventTypeId: body.eventTypeId,
           packageId: body.packageId,
           title: body.title?.trim() || `${body.guestOfHonor || customerName} Booking`,
@@ -230,7 +223,7 @@ export async function POST(request: Request) {
           startTime,
           endTime,
           status: "PENDING",
-          workflowStep: 0,
+          workflowStep: "PENDING",
           packageName: body.packageName?.trim() || null,
           guestOfHonor: body.guestOfHonor?.trim() || null,
           depositAmount,
@@ -259,7 +252,7 @@ export async function POST(request: Request) {
           { tenantId: tenant.id, partyId: party.id, icon: "…", title: "Pending Hold Created", body: `${customerName} created ${eventNumber}. Hold expires in 48 hours unless confirmed.` },
           { tenantId: tenant.id, partyId: party.id, icon: "✉", title: "Confirmation Link Created", body: body.email ? `Confirmation should be sent to ${body.email}: ${confirmationUrl}` : `No email address was entered. Confirmation link: ${confirmationUrl}` },
           { tenantId: tenant.id, partyId: party.id, icon: "🔗", title: "RSVP Link Generated", body: `Guest RSVP and waiver link created: ${inviteUrl}` },
-          { tenantId: tenant.id, partyId: party.id, icon: "$", title: "Deposit Authorized Only", body: depositStatus === "WAIVED" ? "Deposit was waived by staff." : "Deposit/card info may be saved, but the deposit should not be processed until confirmation." },
+          { tenantId: tenant.id, partyId: party.id, icon: "$", title: "Deposit Authorized Only", body: body.depositStatus === "waived" ? "Deposit was waived by staff." : "Deposit/card info may be saved, but the deposit should not be processed until confirmation." },
         ],
       });
 

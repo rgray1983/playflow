@@ -13,6 +13,7 @@ export async function GET(_request: Request, { params }: Params) {
     const { token } = await params;
     const party = await prisma.party.findUnique({ where: { confirmationToken: token } });
     if (!party) return NextResponse.json({ error: "Confirmation link was not found." }, { status: 404 });
+
     return NextResponse.json({
       party: {
         id: party.id,
@@ -22,7 +23,7 @@ export async function GET(_request: Request, { params }: Params) {
         startTime: party.startTime,
         endTime: party.endTime,
         status: party.status,
-        pendingExpiresAt: (party as { pendingExpiresAt?: Date | null }).pendingExpiresAt ?? null,
+        confirmationExpiresAt: party.confirmationExpiresAt ?? null,
       },
     });
   } catch (error) {
@@ -37,14 +38,15 @@ export async function POST(_request: Request, { params }: Params) {
     if (!party) return NextResponse.json({ error: "Confirmation link was not found." }, { status: 404 });
     if (party.status === "CANCELLED") return NextResponse.json({ error: "This party has been cancelled." }, { status: 400 });
 
-    const pendingExpiresAt = (party as { pendingExpiresAt?: Date | null }).pendingExpiresAt ?? null;
-    if (party.status === "PENDING" && pendingExpiresAt && pendingExpiresAt.getTime() < Date.now()) {
+    const confirmationExpiresAt = party.confirmationExpiresAt ?? null;
+    if (party.status === "PENDING" && confirmationExpiresAt && confirmationExpiresAt.getTime() < Date.now()) {
       return NextResponse.json({ error: "This pending hold has expired." }, { status: 410 });
     }
 
     const updatedParty = await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(
-        'UPDATE "Party" SET status = $1::"PartyStatus", "workflowStep" = 1, "confirmedAt" = NOW(), "updatedAt" = NOW() WHERE id = $2',
+        'UPDATE "Party" SET status = $1::"PartyStatus", "workflowStep" = $2, "confirmedAt" = NOW(), "updatedAt" = NOW() WHERE id = $3',
+        "CONFIRMED",
         "CONFIRMED",
         party.id,
       );

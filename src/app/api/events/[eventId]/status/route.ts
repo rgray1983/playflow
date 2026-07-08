@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
-  clampWorkflowStep,
-  completeWorkflowIndex,
-  getStatusForWorkflowStep,
+  completeWorkflowStep,
+  getNextWorkflowStep,
   getWorkflowStep,
+  isPartyWorkflowStepKey,
 } from "@/lib/party-workflow";
 
 type Params = {
@@ -23,9 +23,6 @@ export async function POST(request: Request, { params }: Params) {
   try {
     const { eventId } = await params;
     const body = await request.json().catch(() => ({}));
-    const requestedWorkflowStep = clampWorkflowStep(body.workflowStep);
-    const nextStatus = getStatusForWorkflowStep(requestedWorkflowStep);
-    const workflowStep = getWorkflowStep(requestedWorkflowStep);
 
     const party = await prisma.party.findUnique({ where: { id: eventId } });
 
@@ -37,23 +34,28 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Restore this party before changing its workflow step." }, { status: 400 });
     }
 
-    const currentWorkflowStep = clampWorkflowStep((party as { workflowStep?: number | null }).workflowStep);
+    const currentWorkflowStep = typeof party.workflowStep === "string" && isPartyWorkflowStepKey(party.workflowStep)
+      ? party.workflowStep
+      : "PENDING";
+
+    const requestedWorkflowStep = typeof body.workflowStep === "string" && isPartyWorkflowStepKey(body.workflowStep)
+      ? body.workflowStep
+      : body.complete === true
+        ? completeWorkflowStep.key
+        : getNextWorkflowStep(currentWorkflowStep)?.key ?? completeWorkflowStep.key;
+
+    const workflowStep = getWorkflowStep(requestedWorkflowStep);
+    const nextStatus = body.complete === true ? "COMPLETED" : workflowStep.partyStatus;
 
     if (currentWorkflowStep === requestedWorkflowStep && party.status === nextStatus) {
       return NextResponse.json({ event: party });
     }
 
-    const timelineTitle = requestedWorkflowStep >= completeWorkflowIndex
-      ? "Party Completed"
-      : workflowStep?.timelineTitle ?? `Party moved to step ${requestedWorkflowStep}`;
-
-    const timelineIcon = requestedWorkflowStep >= completeWorkflowIndex
-      ? "✓"
-      : workflowStep?.timelineIcon ?? "•";
-
-    const timelineBody = requestedWorkflowStep >= completeWorkflowIndex
+    const timelineTitle = body.complete === true ? "Party Completed" : workflowStep.timelineTitle;
+    const timelineIcon = body.complete === true ? "✓" : workflowStep.timelineIcon;
+    const timelineBody = body.complete === true
       ? `${party.eventNumber || party.title} was completed by staff.`
-      : `${party.eventNumber || party.title} moved to ${workflowStep?.label ?? "the next workflow step"}.`;
+      : `${party.eventNumber || party.title} moved to ${workflowStep.label}.`;
 
     const updatedParty = await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(
@@ -72,7 +74,7 @@ export async function POST(request: Request, { params }: Params) {
           body: timelineBody,
           metadata: {
             source: "party-manager",
-            action: "update-workflow-step",
+            action: body.complete === true ? "complete-party" : "update-workflow-step",
             previousStatus: party.status,
             nextStatus,
             previousWorkflowStep: currentWorkflowStep,

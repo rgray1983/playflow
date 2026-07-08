@@ -28,7 +28,8 @@ export async function POST(_request: Request, { params }: Params) {
 
     const updatedParty = await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(
-        'UPDATE "Party" SET status = $1::"PartyStatus", "workflowStep" = 1, "updatedAt" = NOW() WHERE id = $2',
+        'UPDATE "Party" SET status = $1::"PartyStatus", "workflowStep" = $2, "confirmedAt" = NOW(), "updatedAt" = NOW() WHERE id = $3',
+        "CONFIRMED",
         "CONFIRMED",
         eventId,
       );
