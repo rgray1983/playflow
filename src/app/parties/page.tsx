@@ -1036,55 +1036,57 @@ export default function PartiesPage() {
                 </section>
 
                 <section className="mb-4 rounded-[14px] border border-black/10 bg-white p-3">
-                  {[
-                    {
-                      key: "next",
-                      label: `${selectedParty.eventTypeName} Checklist`,
-                      detail: `${checklist.filter((item) => item.done).length}/${checklist.length} complete`,
-                    },
-                    {
-                      key: "guests",
-                      label: "Guest Flow",
-                      detail: `${selectedParty.checkedInCount} in • ${selectedParty.checkedOutCount} out`,
-                    },
-                    {
-                      key: "money",
-                      label: "Payments",
-                      detail:
-                        selectedParty.balanceDueNumber > 0
-                          ? selectedParty.balanceDue
-                          : "Paid",
-                    },
-                    {
-                      key: "timeline",
-                      label: "Timeline",
-                      detail: `${selectedParty.timelineItems.length} events`,
-                    },
-                    {
-                      key: "details",
-                      label: "Details + Notes",
-                      detail: selectedParty.packageName,
-                    },
-                  ].map((card) => (
-                    <button
-                      key={card.key}
-                      onClick={() =>
-                        setOpenCard((current) =>
-                          current === card.key ? "" : card.key,
-                        )
-                      }
-                      className={`mb-2 flex w-full items-center justify-between rounded-[10px] px-4 py-3 text-left transition last:mb-0 ${openCard === card.key ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#1E293B] hover:bg-[#EFE8DC]"}`}
-                    >
-                      <span className="text-sm font-semibold">
-                        {card.label}
-                      </span>
-                      <span
-                        className={`text-xs ${openCard === card.key ? "text-white/70" : "text-[#6B7280]"}`}
+                  <div className="grid grid-cols-5 gap-2">
+                    {[
+                      {
+                        key: "next",
+                        label: `${selectedParty.eventTypeName} Checklist`,
+                        detail: `${checklist.filter((item) => item.done).length}/${checklist.length} complete`,
+                      },
+                      {
+                        key: "guests",
+                        label: "Guest Check-In",
+                        detail: `${selectedParty.checkedInCount} in • ${selectedParty.checkedOutCount} out`,
+                      },
+                      {
+                        key: "money",
+                        label: "Payments",
+                        detail:
+                          selectedParty.balanceDueNumber > 0
+                            ? selectedParty.balanceDue
+                            : "Paid",
+                      },
+                      {
+                        key: "timeline",
+                        label: "Timeline",
+                        detail: `${selectedParty.timelineItems.length} events`,
+                      },
+                      {
+                        key: "details",
+                        label: "Details + Notes",
+                        detail: selectedParty.packageName,
+                      },
+                    ].map((card) => (
+                      <button
+                        key={card.key}
+                        onClick={() =>
+                          setOpenCard((current) =>
+                            current === card.key ? "" : card.key,
+                          )
+                        }
+                        className={`min-h-[70px] rounded-[10px] border px-3 py-2.5 text-left transition ${openCard === card.key ? "border-[#1E293B] bg-[#1E293B] text-white" : "border-black/10 bg-[#F6F0E6] text-[#1E293B] hover:bg-[#EFE8DC]"}`}
                       >
-                        {card.detail}
-                      </span>
-                    </button>
-                  ))}
+                        <span className="block text-xs font-semibold leading-tight">
+                          {card.label}
+                        </span>
+                        <span
+                          className={`mt-2 block text-[11px] leading-tight ${openCard === card.key ? "text-white/70" : "text-[#6B7280]"}`}
+                        >
+                          {card.detail}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </section>
 
                 {openCard === "next" && (
