@@ -34,59 +34,44 @@ export async function POST(_request: Request, { params }: Params) {
     });
 
     if (!guest) {
-      return NextResponse.json(
-        { error: "Guest was not found for this event." },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Guest was not found for this party." }, { status: 404 });
     }
 
-    const checkedInAt = guest.checkedInAt ?? new Date();
+    if (guest.party.status === "CANCELLED") {
+      return NextResponse.json({ error: "Cancelled parties cannot be updated." }, { status: 400 });
+    }
 
     const updatedGuest = await prisma.$transaction(async (tx) => {
-      const updated = await tx.partyGuest.update({
+      const savedGuest = await tx.partyGuest.update({
         where: {
-          id: guest.id,
+          id: guestId,
         },
         data: {
           status: "CHECKED_IN",
-          checkedInAt,
+          checkedInAt: new Date(),
         },
       });
 
-      if (!guest.checkedInAt) {
-        await tx.eventTimelineItem.create({
-          data: {
-            tenantId: guest.tenantId,
-            partyId: guest.partyId,
-            icon: "✓",
-            title: "Guest Checked In",
-            body: `${guest.guestName || "Unnamed Guest"} was checked in.`,
-            metadata: {
-              source: "party-control-center",
-              guestId: guest.id,
-            },
+      await tx.eventTimelineItem.create({
+        data: {
+          tenantId: guest.tenantId,
+          partyId: eventId,
+          icon: "✓",
+          title: "Guest Checked In",
+          body: `${guest.guestName || "Unnamed guest"} was checked in.`,
+          metadata: {
+            source: "party-manager",
+            action: "check-in",
+            guestId,
           },
-        });
-      }
+        },
+      });
 
-      return updated;
+      return savedGuest;
     });
 
-    return NextResponse.json({
-      guest: {
-        id: updatedGuest.id,
-        guestName: updatedGuest.guestName,
-        guestEmail: updatedGuest.guestEmail,
-        guestPhone: updatedGuest.guestPhone,
-        parentName: updatedGuest.parentName,
-        status: updatedGuest.status,
-        waiverStatus: updatedGuest.waiverStatus,
-        waiverSignedAt: updatedGuest.waiverSignedAt,
-        checkedInAt: updatedGuest.checkedInAt,
-        checkedOutAt: updatedGuest.checkedOutAt,
-      },
-    });
+    return NextResponse.json({ guest: updatedGuest });
   } catch (error) {
-    return jsonError(error, "Unable to check in guest.");
+    return jsonError(error, "Unable to update guest.");
   }
 }

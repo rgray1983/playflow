@@ -34,58 +34,43 @@ export async function POST(_request: Request, { params }: Params) {
     });
 
     if (!guest) {
-      return NextResponse.json(
-        { error: "Guest was not found for this event." },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Guest was not found for this party." }, { status: 404 });
+    }
+
+    if (guest.party.status === "CANCELLED") {
+      return NextResponse.json({ error: "Cancelled parties cannot be updated." }, { status: 400 });
     }
 
     const updatedGuest = await prisma.$transaction(async (tx) => {
-      const updated = await tx.partyGuest.update({
+      const savedGuest = await tx.partyGuest.update({
         where: {
-          id: guest.id,
+          id: guestId,
         },
         data: {
           status: "NO_SHOW",
-          checkedInAt: null,
-          checkedOutAt: null,
         },
       });
 
-      if (guest.status !== "NO_SHOW") {
-        await tx.eventTimelineItem.create({
-          data: {
-            tenantId: guest.tenantId,
-            partyId: guest.partyId,
-            icon: "!",
-            title: "Guest Marked No-Show",
-            body: `${guest.guestName || "Unnamed Guest"} was marked as a no-show.`,
-            metadata: {
-              source: "party-control-center",
-              guestId: guest.id,
-            },
+      await tx.eventTimelineItem.create({
+        data: {
+          tenantId: guest.tenantId,
+          partyId: eventId,
+          icon: "○",
+          title: "Guest Marked No Show",
+          body: `${guest.guestName || "Unnamed guest"} was marked no show.`,
+          metadata: {
+            source: "party-manager",
+            action: "no-show",
+            guestId,
           },
-        });
-      }
+        },
+      });
 
-      return updated;
+      return savedGuest;
     });
 
-    return NextResponse.json({
-      guest: {
-        id: updatedGuest.id,
-        guestName: updatedGuest.guestName,
-        guestEmail: updatedGuest.guestEmail,
-        guestPhone: updatedGuest.guestPhone,
-        parentName: updatedGuest.parentName,
-        status: updatedGuest.status,
-        waiverStatus: updatedGuest.waiverStatus,
-        waiverSignedAt: updatedGuest.waiverSignedAt,
-        checkedInAt: updatedGuest.checkedInAt,
-        checkedOutAt: updatedGuest.checkedOutAt,
-      },
-    });
+    return NextResponse.json({ guest: updatedGuest });
   } catch (error) {
-    return jsonError(error, "Unable to mark guest as no-show.");
+    return jsonError(error, "Unable to update guest.");
   }
 }
