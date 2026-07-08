@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
@@ -120,6 +121,8 @@ function serializeParty(party: {
   depositMethod: string | null;
   balanceDue: unknown;
   notes: string | null;
+  inviteToken: string | null;
+  inviteUrl: string | null;
   timelineItems?: {
     id: string;
     title: string;
@@ -143,8 +146,20 @@ function serializeParty(party: {
     depositMethod: party.depositMethod,
     balanceDue: Number(party.balanceDue ?? 0),
     notes: party.notes ?? "",
+    inviteToken: party.inviteToken,
+    inviteUrl: party.inviteUrl,
     timelineItems: party.timelineItems ?? [],
   };
+}
+
+
+function createInviteToken() {
+  return randomBytes(18).toString("base64url");
+}
+
+function createInviteUrl(token: string) {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  return `${baseUrl.replace(/\/$/, "")}/rsvp/${token}`;
 }
 
 async function nextEventNumber(tenantId: string) {
@@ -232,6 +247,8 @@ export async function POST(request: Request) {
       : addDuration(startTime);
 
     const eventNumber = await nextEventNumber(tenant.id);
+    const inviteToken = createInviteToken();
+    const inviteUrl = createInviteUrl(inviteToken);
     const depositStatus = toDepositStatus(body.depositStatus);
     const depositMethod = toPaymentMethod(body.depositStatus);
     const depositAmount =
@@ -243,6 +260,8 @@ export async function POST(request: Request) {
         data: {
           tenantId: tenant.id,
           eventNumber,
+          inviteToken,
+          inviteUrl,
           eventTypeId: body.eventTypeId,
           packageId: body.packageId,
           title: body.title?.trim() || `${body.guestOfHonor || customerName} Booking`,
@@ -290,8 +309,15 @@ export async function POST(request: Request) {
             icon: "✉",
             title: "Confirmation Email Queued",
             body: body.email
-              ? `Confirmation will be sent to ${body.email}.`
-              : "No email address was entered.",
+              ? `Confirmation will be sent to ${body.email}. RSVP link: ${inviteUrl}`
+              : `No email address was entered. RSVP link created: ${inviteUrl}`,
+          },
+          {
+            tenantId: tenant.id,
+            partyId: party.id,
+            icon: "🔗",
+            title: "RSVP Link Generated",
+            body: `Guest RSVP and waiver link created: ${inviteUrl}`,
           },
           {
             tenantId: tenant.id,

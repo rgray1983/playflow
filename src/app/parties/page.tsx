@@ -34,6 +34,7 @@ type EventRecord = {
   depositMethod: string | null;
   balanceDue: number;
   notes: string;
+  inviteUrl: string | null;
   timelineItems: EventTimelineItem[];
 };
 
@@ -60,7 +61,9 @@ type Party = {
   balanceDueNumber: number;
   addOns: string[];
   notes: string;
+  inviteUrl: string | null;
   timelineItems: EventTimelineItem[];
+  inviteUrl: string | null;
   guests: {
     name: string;
     status: string;
@@ -98,6 +101,7 @@ const fallbackParties: Party[] = [
     balanceDueNumber: 200,
     addOns: ["Balloon Arch", "Balloon Columns"],
     notes: "Pink, teal, and white balloons. Birthday child loves princess themes.",
+    inviteUrl: "http://localhost:3000/rsvp/sample-party-link",
     timelineItems: [
       {
         id: "sample-timeline-1",
@@ -231,6 +235,7 @@ function normalizeEventToParty(event: EventRecord): Party {
     balanceDueNumber: event.balanceDue,
     addOns: [],
     notes: event.notes || "No notes yet.",
+    inviteUrl: event.inviteUrl,
     timelineItems: event.timelineItems ?? [],
     guests: event.guestOfHonor ? [{ name: guestName, status: "Guest of Honor", waiver: "Needed" }] : [],
   };
@@ -246,6 +251,7 @@ export default function PartiesPage() {
   const [parties, setParties] = useState<Party[]>(fallbackParties);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [activeControlTab, setActiveControlTab] = useState("overview");
+  const [rsvpMenuOpen, setRsvpMenuOpen] = useState(false);
 
   useEffect(() => {
     async function loadPartyManagerData() {
@@ -347,6 +353,17 @@ export default function PartiesPage() {
   const completedReadiness = eventReadiness.filter((item) => item.done).length;
   const readinessPercent = Math.round((completedReadiness / eventReadiness.length) * 100);
 
+  async function copyRsvpLink() {
+    if (!selectedParty.inviteUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(selectedParty.inviteUrl);
+      alert("RSVP link copied.");
+    } catch {
+      alert(selectedParty.inviteUrl);
+    }
+  }
+
   return (
     <main className="h-screen overflow-hidden bg-[#E7E3DA] p-5 text-[#202633] antialiased">
       <div className="flex h-full overflow-hidden rounded-[18px] bg-[#F6F0E6] shadow-sm">
@@ -438,7 +455,7 @@ export default function PartiesPage() {
                   const isSelected = selectedParty.id === party.id;
 
                   return (
-                    <button key={party.id} onClick={() => setSelectedPartyId(party.id)} className={`w-full rounded-[10px] border p-4 text-left transition ${isSelected ? "border-[#1E293B] bg-[#1E293B] text-white" : "border-black/10 bg-[#F6F0E6] text-[#1E293B] hover:bg-[#EFE8DC]"}`}>
+                    <button key={party.id} onClick={() => { setSelectedPartyId(party.id); setRsvpMenuOpen(false); }} className={`w-full rounded-[10px] border p-4 text-left transition ${isSelected ? "border-[#1E293B] bg-[#1E293B] text-white" : "border-black/10 bg-[#F6F0E6] text-[#1E293B] hover:bg-[#EFE8DC]"}`}>
                       <div className="mb-3 flex items-start justify-between gap-3">
                         <div>
                           <div className="mb-2 flex items-center gap-2">
@@ -477,7 +494,39 @@ export default function PartiesPage() {
                         {getEventIcon(selectedParty.eventTypeName)} {selectedParty.eventTypeName}
                       </span>
                     </div>
-                    <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">{selectedParty.title}</h2>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">{selectedParty.title}</h2>
+                      {selectedParty.inviteUrl && (
+                        <div className="relative">
+                          <button
+                            onClick={() => setRsvpMenuOpen((current) => !current)}
+                            className="rounded-full border border-[#B7D4FF] bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#0B55C6]"
+                          >
+                            RSVP Link
+                          </button>
+
+                          {rsvpMenuOpen && (
+                            <div className="absolute left-0 top-8 z-20 w-[260px] rounded-[12px] border border-black/10 bg-white p-3 text-left shadow-lg">
+                              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280]">Invite Link</p>
+                              <p className="mb-3 truncate rounded-[8px] bg-[#F6F0E6] px-3 py-2 text-xs text-[#1E293B]">
+                                {selectedParty.inviteUrl}
+                              </p>
+                              <div className="grid gap-2">
+                                <button onClick={copyRsvpLink} className="rounded-[8px] bg-[#1E293B] px-3 py-2 text-xs font-semibold text-white">
+                                  Copy Link
+                                </button>
+                                <button className="rounded-[8px] border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-[#1E293B]">
+                                  Email Link to Host
+                                </button>
+                                <a href={selectedParty.inviteUrl} target="_blank" className="rounded-[8px] border border-black/10 bg-white px-3 py-2 text-center text-xs font-semibold text-[#1E293B]">
+                                  Preview RSVP Page
+                                </a>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     <p className="mt-2 text-sm text-[#6B7280]">{selectedParty.eventNumber} • {selectedParty.date} • {selectedParty.time}</p>
                   </div>
 
@@ -545,6 +594,7 @@ export default function PartiesPage() {
                       <div className="mt-4 space-y-2">
                         <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">✓ Check In Guest</button>
                         <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">✍ Send Waiver Link</button>
+                        <button onClick={copyRsvpLink} className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">🔗 Copy RSVP Link</button>
                         <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">💵 Collect Remaining Balance</button>
                         <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">🧾 Open POS Ticket</button>
                         <button className="w-full rounded-[10px] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E293B]">🏁 Complete Event</button>

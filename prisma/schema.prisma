@@ -429,6 +429,8 @@ model Party {
   eventTypeId    String?
   packageId      String?
   eventNumber    String?     @unique
+  inviteToken    String?     @unique
+  inviteUrl      String?
   title          String
   eventDate      DateTime
   startTime      DateTime
@@ -463,6 +465,7 @@ model Party {
   @@index([packageId])
   @@index([eventDate])
   @@index([eventNumber])
+  @@index([inviteToken])
   @@index([status])
 }
 
