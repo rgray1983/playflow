@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
-  getNextWorkflowStep,
+  clampWorkflowStep,
+  completeWorkflowIndex,
+  getStatusForWorkflowStep,
   getWorkflowStep,
-  isWorkflowStatus,
 } from "@/lib/party-workflow";
 
 type Params = {
@@ -22,11 +23,9 @@ export async function POST(request: Request, { params }: Params) {
   try {
     const { eventId } = await params;
     const body = await request.json().catch(() => ({}));
-    const nextStatus = typeof body.status === "string" ? body.status : "";
-
-    if (!isWorkflowStatus(nextStatus)) {
-      return NextResponse.json({ error: "Unsupported party status." }, { status: 400 });
-    }
+    const requestedWorkflowStep = clampWorkflowStep(body.workflowStep);
+    const nextStatus = getStatusForWorkflowStep(requestedWorkflowStep);
+    const workflowStep = getWorkflowStep(requestedWorkflowStep);
 
     const party = await prisma.party.findUnique({ where: { id: eventId } });
 
@@ -35,27 +34,32 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     if (party.status === "CANCELLED") {
-      return NextResponse.json(
-        { error: "Restore this party before changing its workflow status." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Restore this party before changing its workflow step." }, { status: 400 });
     }
 
-    const expectedNextStep = getNextWorkflowStep(party.status);
+    const currentWorkflowStep = clampWorkflowStep((party as { workflowStep?: number | null }).workflowStep);
 
-    if (!expectedNextStep || expectedNextStep.status !== nextStatus) {
-      return NextResponse.json(
-        { error: "This workflow step is not the next recommended action." },
-        { status: 400 },
-      );
+    if (currentWorkflowStep === requestedWorkflowStep && party.status === nextStatus) {
+      return NextResponse.json({ event: party });
     }
 
-    const nextStep = getWorkflowStep(nextStatus);
+    const timelineTitle = requestedWorkflowStep >= completeWorkflowIndex
+      ? "Party Completed"
+      : workflowStep?.timelineTitle ?? `Party moved to step ${requestedWorkflowStep}`;
+
+    const timelineIcon = requestedWorkflowStep >= completeWorkflowIndex
+      ? "✓"
+      : workflowStep?.timelineIcon ?? "•";
+
+    const timelineBody = requestedWorkflowStep >= completeWorkflowIndex
+      ? `${party.eventNumber || party.title} was completed by staff.`
+      : `${party.eventNumber || party.title} moved to ${workflowStep?.label ?? "the next workflow step"}.`;
 
     const updatedParty = await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(
-        'UPDATE "Party" SET status = $1::"PartyStatus", "updatedAt" = NOW() WHERE id = $2',
+        'UPDATE "Party" SET status = $1::"PartyStatus", "workflowStep" = $2, "updatedAt" = NOW() WHERE id = $3',
         nextStatus,
+        requestedWorkflowStep,
         eventId,
       );
 
@@ -63,14 +67,16 @@ export async function POST(request: Request, { params }: Params) {
         data: {
           tenantId: party.tenantId,
           partyId: party.id,
-          icon: nextStep.timelineIcon,
-          title: nextStep.timelineTitle,
-          body: `${party.eventNumber || party.title} was moved to ${nextStep.label} by staff.`,
+          icon: timelineIcon,
+          title: timelineTitle,
+          body: timelineBody,
           metadata: {
             source: "party-manager",
-            action: "advance-party-workflow",
+            action: "update-workflow-step",
             previousStatus: party.status,
             nextStatus,
+            previousWorkflowStep: currentWorkflowStep,
+            nextWorkflowStep: requestedWorkflowStep,
           },
         },
       });
@@ -80,6 +86,6 @@ export async function POST(request: Request, { params }: Params) {
 
     return NextResponse.json({ event: updatedParty });
   } catch (error) {
-    return jsonError(error, "Unable to update party status.");
+    return jsonError(error, "Unable to update party workflow.");
   }
 }

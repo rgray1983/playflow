@@ -11,8 +11,7 @@ function jsonError(error: unknown, fallbackMessage: string, status = 500) {
 export async function POST(_request: Request, { params }: Params) {
   try {
     const { eventId } = await params;
-    const party = await prisma.party.findUnique({ where: { id: eventId } });
-
+    const party = await prisma.party.findUnique({ where: { id: eventId } }) as any;
     if (!party) return NextResponse.json({ error: "Party or event was not found." }, { status: 404 });
     if (party.status === "CANCELLED") return NextResponse.json({ event: party });
 
@@ -23,9 +22,11 @@ export async function POST(_request: Request, { params }: Params) {
           tenantId: party.tenantId,
           partyId: party.id,
           icon: "×",
-          title: "Party Cancelled",
-          body: `${party.eventNumber || party.title} was cancelled by staff. Booking, guest, timeline, and payment records were preserved.`,
-          metadata: { source: "party-manager", action: "cancel-party" },
+          title: party.confirmedAt ? "Confirmed Party Cancelled" : "Pending Hold Cancelled",
+          body: party.confirmedAt
+            ? `${party.eventNumber || party.title} was cancelled by staff. Refund or credit review may be needed if payment was captured.`
+            : `${party.eventNumber || party.title} was cancelled before confirmation. No deposit was processed.`,
+          metadata: { source: "party-manager", action: "cancel-party", wasConfirmed: Boolean(party.confirmedAt) },
         },
       });
       return event;

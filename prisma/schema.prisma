@@ -439,6 +439,12 @@ model Party {
   startTime      DateTime
   endTime        DateTime
   status         PartyStatus @default(PENDING)
+  workflowStep          String?
+  confirmationToken     String?   @unique
+  confirmationUrl       String?
+  confirmationExpiresAt DateTime?
+  confirmedAt           DateTime?
+  depositCapturedAt     DateTime?
   packageName    String?
   guestCount     Int?
   guestOfHonor   String?
@@ -470,6 +476,8 @@ model Party {
   @@index([eventNumber])
   @@index([inviteToken])
   @@index([status])
+  @@index([workflowStep])
+  @@index([confirmationExpiresAt])
 }
 
 model PartyGuest {

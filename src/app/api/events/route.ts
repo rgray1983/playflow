@@ -21,72 +21,37 @@ type CreateEventPayload = {
   depositAmount?: number;
   balanceDue?: number;
   depositStatus?: "pending" | "cash" | "card" | "waived";
-  addOns?: {
-    id: string;
-    name: string;
-    price: number;
-  }[];
+  addOns?: { id: string; name: string; price: number }[];
 };
 
 async function getTenant() {
-  const palmettoTenant = await prisma.tenant.findUnique({
-    where: {
-      slug: "palmetto-playhouse",
-    },
-  });
-
+  const palmettoTenant = await prisma.tenant.findUnique({ where: { slug: "palmetto-playhouse" } });
   if (palmettoTenant) return palmettoTenant;
-
-  return prisma.tenant.findFirst({
-    orderBy: {
-      createdAt: "asc",
-    },
-  });
+  return prisma.tenant.findFirst({ orderBy: { createdAt: "asc" } });
 }
 
 function jsonError(error: unknown, fallbackMessage: string, status = 500) {
   console.error(fallbackMessage, error);
-
-  return NextResponse.json(
-    {
-      error: error instanceof Error ? error.message : fallbackMessage,
-    },
-    { status }
-  );
+  return NextResponse.json({ error: error instanceof Error ? error.message : fallbackMessage }, { status });
 }
 
 function toDecimal(value: unknown) {
-  if (value === null || value === undefined || value === "") {
-    return new Prisma.Decimal(0);
-  }
-
+  if (value === null || value === undefined || value === "") return new Prisma.Decimal(0);
   const parsed = Number(value);
-
   return new Prisma.Decimal(Number.isFinite(parsed) ? parsed : 0);
 }
 
 function parseEventDate(value: string | undefined) {
   if (!value) return new Date();
-
   const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return new Date();
-  }
-
-  return parsed;
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
 function combineDateAndTime(dateValue: string | undefined, timeValue: string | undefined) {
   const date = parseEventDate(dateValue);
   const cleanTime = timeValue?.trim() || "12:00 PM";
   const parsed = new Date(`${date.toDateString()} ${cleanTime}`);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return date;
-  }
-
-  return parsed;
+  return Number.isNaN(parsed.getTime()) ? date : parsed;
 }
 
 function addDuration(startTime: Date, minutes = 120) {
@@ -114,6 +79,11 @@ function serializeParty(party: {
   startTime: Date;
   endTime: Date;
   status: string;
+  workflowStep?: number | null;
+  confirmationToken?: string | null;
+  confirmationUrl?: string | null;
+  pendingExpiresAt?: Date | null;
+  confirmedAt?: Date | null;
   packageName: string | null;
   guestOfHonor: string | null;
   depositAmount: unknown;
@@ -123,13 +93,7 @@ function serializeParty(party: {
   notes: string | null;
   inviteToken: string | null;
   inviteUrl: string | null;
-  timelineItems?: {
-    id: string;
-    title: string;
-    body: string | null;
-    icon: string | null;
-    createdAt: Date;
-  }[];
+  timelineItems?: { id: string; title: string; body: string | null; icon: string | null; createdAt: Date }[];
   guests?: {
     id: string;
     guestName: string | null;
@@ -140,6 +104,7 @@ function serializeParty(party: {
     waiverStatus?: string | null;
     waiverSignedAt?: Date | null;
     checkedInAt: Date | null;
+    checkedOutAt?: Date | null;
   }[];
 }) {
   return {
@@ -150,6 +115,11 @@ function serializeParty(party: {
     startTime: party.startTime,
     endTime: party.endTime,
     status: party.status,
+    workflowStep: party.workflowStep ?? 0,
+    confirmationToken: party.confirmationToken ?? null,
+    confirmationUrl: party.confirmationUrl ?? null,
+    pendingExpiresAt: party.pendingExpiresAt ?? null,
+    confirmedAt: party.confirmedAt ?? null,
     packageName: party.packageName,
     guestOfHonor: party.guestOfHonor,
     depositAmount: Number(party.depositAmount ?? 0),
@@ -170,63 +140,40 @@ function serializeParty(party: {
       waiverStatus: guest.waiverStatus ?? "NEEDED",
       waiverSignedAt: guest.waiverSignedAt ?? null,
       checkedInAt: guest.checkedInAt,
+      checkedOutAt: guest.checkedOutAt ?? null,
     })),
   };
 }
 
-
-function createInviteToken() {
+function createToken() {
   return randomBytes(18).toString("base64url");
 }
 
-function createInviteUrl(token: string) {
+function createUrl(path: string, token: string) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  return `${baseUrl.replace(/\/$/, "")}/rsvp/${token}`;
+  return `${baseUrl.replace(/\/$/, "")}/${path}/${token}`;
 }
 
 async function nextEventNumber(tenantId: string) {
-  const count = await prisma.party.count({
-    where: {
-      tenantId,
-    },
-  });
-
+  const count = await prisma.party.count({ where: { tenantId } });
   return `EVT-${String(count + 1).padStart(6, "0")}`;
 }
 
 export async function GET() {
   try {
     const tenant = await getTenant();
-
-    if (!tenant) {
-      return NextResponse.json({ events: [] });
-    }
+    if (!tenant) return NextResponse.json({ events: [] });
 
     const events = await prisma.party.findMany({
-      where: {
-        tenantId: tenant.id,
-      },
+      where: { tenantId: tenant.id },
       include: {
-        guests: {
-          orderBy: {
-            createdAt: "asc",
-          },
-        },
-        timelineItems: {
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 10,
-        },
+        guests: { orderBy: { createdAt: "asc" } },
+        timelineItems: { orderBy: { createdAt: "desc" }, take: 10 },
       },
-      orderBy: {
-        eventDate: "asc",
-      },
+      orderBy: { eventDate: "asc" },
     });
 
-    return NextResponse.json({
-      events: events.map(serializeParty),
-    });
+    return NextResponse.json({ events: events.map(serializeParty) });
   } catch (error) {
     return jsonError(error, "Unable to load events.");
   }
@@ -235,51 +182,35 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const tenant = await getTenant();
-
-    if (!tenant) {
-      return NextResponse.json(
-        { error: "No tenant found. Create a tenant before adding events." },
-        { status: 400 }
-      );
-    }
+    if (!tenant) return NextResponse.json({ error: "No tenant found. Create a tenant before adding events." }, { status: 400 });
 
     let body: CreateEventPayload;
-
     try {
       body = (await request.json()) as CreateEventPayload;
     } catch (error) {
       return jsonError(error, "Invalid event request body.", 400);
     }
 
-    if (!body.eventTypeId) {
-      return NextResponse.json({ error: "Event type is required." }, { status: 400 });
-    }
-
-    if (!body.packageId) {
-      return NextResponse.json({ error: "Package is required." }, { status: 400 });
-    }
+    if (!body.eventTypeId) return NextResponse.json({ error: "Event type is required." }, { status: 400 });
+    if (!body.packageId) return NextResponse.json({ error: "Package is required." }, { status: 400 });
 
     const parentFirstName = body.parentFirstName?.trim() || "";
     const parentLastName = body.parentLastName?.trim() || "";
     const customerName = `${parentFirstName} ${parentLastName}`.trim();
-
-    if (!customerName) {
-      return NextResponse.json({ error: "Customer name is required." }, { status: 400 });
-    }
+    if (!customerName) return NextResponse.json({ error: "Customer name is required." }, { status: 400 });
 
     const eventDate = parseEventDate(body.eventDate);
     const startTime = combineDateAndTime(body.eventDate, body.startTime);
-    const endTime = body.endTime
-      ? combineDateAndTime(body.eventDate, body.endTime)
-      : addDuration(startTime);
-
+    const endTime = body.endTime ? combineDateAndTime(body.eventDate, body.endTime) : addDuration(startTime);
     const eventNumber = await nextEventNumber(tenant.id);
-    const inviteToken = createInviteToken();
-    const inviteUrl = createInviteUrl(inviteToken);
+    const inviteToken = createToken();
+    const inviteUrl = createUrl("rsvp", inviteToken);
+    const confirmationToken = createToken();
+    const confirmationUrl = createUrl("confirm-party", confirmationToken);
+    const pendingExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
     const depositStatus = toDepositStatus(body.depositStatus);
     const depositMethod = toPaymentMethod(body.depositStatus);
-    const depositAmount =
-      body.depositStatus === "waived" ? new Prisma.Decimal(0) : toDecimal(body.depositAmount);
+    const depositAmount = body.depositStatus === "waived" ? new Prisma.Decimal(0) : toDecimal(body.depositAmount);
     const balanceDue = toDecimal(body.balanceDue);
 
     const event = await prisma.$transaction(async (tx) => {
@@ -289,26 +220,28 @@ export async function POST(request: Request) {
           eventNumber,
           inviteToken,
           inviteUrl,
+          confirmationToken,
+          confirmationUrl,
+          pendingExpiresAt,
           eventTypeId: body.eventTypeId,
           packageId: body.packageId,
           title: body.title?.trim() || `${body.guestOfHonor || customerName} Booking`,
           eventDate,
           startTime,
           endTime,
-          status: "CONFIRMED",
+          status: "PENDING",
+          workflowStep: 0,
           packageName: body.packageName?.trim() || null,
           guestOfHonor: body.guestOfHonor?.trim() || null,
           depositAmount,
-          depositStatus,
+          depositStatus: "PENDING",
           depositMethod,
           balanceDue,
           notes: body.notes?.trim() || null,
         },
       });
 
-      const addOns = body.addOns ?? [];
-
-      for (const addOn of addOns) {
+      for (const addOn of body.addOns ?? []) {
         await tx.partyAddOnItem.create({
           data: {
             tenantId: tenant.id,
@@ -323,77 +256,23 @@ export async function POST(request: Request) {
 
       await tx.eventTimelineItem.createMany({
         data: [
-          {
-            tenantId: tenant.id,
-            partyId: party.id,
-            icon: "✓",
-            title: "Booking Created",
-            body: `${customerName} created ${eventNumber}.`,
-          },
-          {
-            tenantId: tenant.id,
-            partyId: party.id,
-            icon: "✉",
-            title: "Confirmation Email Queued",
-            body: body.email
-              ? `Confirmation will be sent to ${body.email}. RSVP link: ${inviteUrl}`
-              : `No email address was entered. RSVP link created: ${inviteUrl}`,
-          },
-          {
-            tenantId: tenant.id,
-            partyId: party.id,
-            icon: "🔗",
-            title: "RSVP Link Generated",
-            body: `Guest RSVP and waiver link created: ${inviteUrl}`,
-          },
-          {
-            tenantId: tenant.id,
-            partyId: party.id,
-            icon: depositStatus === "WAIVED" ? "○" : "$",
-            title: depositStatus === "WAIVED" ? "Deposit Waived" : "Deposit Recorded",
-            body:
-              depositStatus === "WAIVED"
-                ? "Deposit was waived by staff."
-                : `${depositMethod === "CASH" ? "Cash" : "Card"} deposit recorded for ${depositAmount.toFixed(2)}.`,
-          },
+          { tenantId: tenant.id, partyId: party.id, icon: "…", title: "Pending Hold Created", body: `${customerName} created ${eventNumber}. Hold expires in 48 hours unless confirmed.` },
+          { tenantId: tenant.id, partyId: party.id, icon: "✉", title: "Confirmation Link Created", body: body.email ? `Confirmation should be sent to ${body.email}: ${confirmationUrl}` : `No email address was entered. Confirmation link: ${confirmationUrl}` },
+          { tenantId: tenant.id, partyId: party.id, icon: "🔗", title: "RSVP Link Generated", body: `Guest RSVP and waiver link created: ${inviteUrl}` },
+          { tenantId: tenant.id, partyId: party.id, icon: "$", title: "Deposit Authorized Only", body: depositStatus === "WAIVED" ? "Deposit was waived by staff." : "Deposit/card info may be saved, but the deposit should not be processed until confirmation." },
         ],
       });
 
-      if (depositMethod && depositAmount.greaterThan(0)) {
-        await tx.eventPayment.create({
-          data: {
-            tenantId: tenant.id,
-            partyId: party.id,
-            amount: depositAmount,
-            method: depositMethod,
-            status: "PAID",
-            notes: "Deposit collected during booking.",
-          },
-        });
-      }
-
       return tx.party.findUniqueOrThrow({
-        where: {
-          id: party.id,
-        },
+        where: { id: party.id },
         include: {
-          guests: {
-            orderBy: {
-              createdAt: "asc",
-            },
-          },
-          timelineItems: {
-            orderBy: {
-              createdAt: "desc",
-            },
-          },
+          guests: { orderBy: { createdAt: "asc" } },
+          timelineItems: { orderBy: { createdAt: "desc" } },
         },
       });
     });
 
-    return NextResponse.json({
-      event: serializeParty(event),
-    });
+    return NextResponse.json({ event: serializeParty(event) });
   } catch (error) {
     return jsonError(error, "Unable to create event.");
   }

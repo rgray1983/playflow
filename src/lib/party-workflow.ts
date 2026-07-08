@@ -1,113 +1,139 @@
-export type PartyWorkflowStatus =
+export type PartyWorkflowStepKey =
+  | "PENDING"
+  | "CONFIRMED"
+  | "ROOM_SETUP"
+  | "CHECK_IN"
+  | "PARTY_TIME"
+  | "PAYMENT"
+  | "CLEANUP";
+
+export type PartyStatusValue =
   | "PENDING"
   | "CONFIRMED"
   | "READY"
   | "IN_PROGRESS"
   | "CLEANING_UP"
-  | "COMPLETED";
+  | "COMPLETED"
+  | "CANCELLED";
 
 export type PartyWorkflowStep = {
-  status: PartyWorkflowStatus;
+  key: PartyWorkflowStepKey;
   label: string;
-  shortLabel: string;
   description: string;
   nextActionLabel: string;
   confirmationTitle: string;
   confirmationBody: string;
   timelineTitle: string;
   timelineIcon: string;
+  partyStatus: Exclude<PartyStatusValue, "CANCELLED">;
 };
 
 export const partyWorkflowSteps: PartyWorkflowStep[] = [
   {
-    status: "PENDING",
+    key: "PENDING",
     label: "Pending",
-    shortLabel: "Pending",
-    description: "Booking needs confirmation before staff starts party prep.",
-    nextActionLabel: "Confirm Booking",
-    confirmationTitle: "Confirm this booking?",
+    description: "The date and time are being held. Confirmation is required within 48 hours before the deposit is processed.",
+    nextActionLabel: "Confirm Party",
+    confirmationTitle: "Confirm this party?",
     confirmationBody:
-      "This moves the party into the confirmed schedule, keeps all booking details, and records the change in the timeline.",
+      "This will lock the party into the schedule, process the saved deposit method if one is attached, and move the party into the active workflow.",
     timelineTitle: "Party Confirmed",
     timelineIcon: "✓",
+    partyStatus: "PENDING",
   },
   {
-    status: "CONFIRMED",
+    key: "CONFIRMED",
     label: "Confirmed",
-    shortLabel: "Confirmed",
-    description: "Booking is confirmed. Staff can prepare the room and review details.",
-    nextActionLabel: "Mark Ready",
-    confirmationTitle: "Mark this party ready?",
-    confirmationBody:
-      "Use this when the room setup and party prep are ready. Guest tools and the timeline stay connected to this party.",
-    timelineTitle: "Party Marked Ready",
+    description: "The party is confirmed. Staff can review details and prepare the room.",
+    nextActionLabel: "Start Room Setup",
+    confirmationTitle: "Start room setup?",
+    confirmationBody: "This moves the party into room setup so staff can prep decorations, tables, food, and event details.",
+    timelineTitle: "Room Setup Started",
     timelineIcon: "★",
+    partyStatus: "CONFIRMED",
   },
   {
-    status: "READY",
-    label: "Ready",
-    shortLabel: "Ready",
-    description: "Room setup is ready. The next step is to begin the live party.",
-    nextActionLabel: "Start Party",
-    confirmationTitle: "Start this party?",
-    confirmationBody:
-      "This begins the live party workflow. Guest check-in becomes the main focus and PlayFlow records that the party started.",
-    timelineTitle: "Party Started",
+    key: "ROOM_SETUP",
+    label: "Room Setup",
+    description: "The room is being prepared before guests arrive.",
+    nextActionLabel: "Open Check-In",
+    confirmationTitle: "Open guest check-in?",
+    confirmationBody: "This makes check-in the main focus so staff can begin receiving guests and waivers.",
+    timelineTitle: "Guest Check-In Opened",
+    timelineIcon: "✓",
+    partyStatus: "READY",
+  },
+  {
+    key: "CHECK_IN",
+    label: "Check-In",
+    description: "Guests are arriving. Staff should check guests in and watch waiver status.",
+    nextActionLabel: "Start Party Time",
+    confirmationTitle: "Start party time?",
+    confirmationBody: "This begins the live party portion and records that the party officially started.",
+    timelineTitle: "Party Time Started",
     timelineIcon: "▶",
+    partyStatus: "IN_PROGRESS",
   },
   {
-    status: "IN_PROGRESS",
-    label: "In Progress",
-    shortLabel: "Live",
-    description: "The party is running. Staff should manage guests, waivers, payments, and timeline activity.",
+    key: "PARTY_TIME",
+    label: "Party Time",
+    description: "The party is live. Staff can manage guests, activities, and timeline activity.",
+    nextActionLabel: "Move to Payment",
+    confirmationTitle: "Move to payment?",
+    confirmationBody: "Use this when the party is nearing checkout and staff should collect any remaining balance.",
+    timelineTitle: "Moved to Payment",
+    timelineIcon: "$",
+    partyStatus: "IN_PROGRESS",
+  },
+  {
+    key: "PAYMENT",
+    label: "Payment",
+    description: "Collect remaining balance before closing the event.",
     nextActionLabel: "Begin Cleanup",
     confirmationTitle: "Begin cleanup?",
-    confirmationBody:
-      "Use this when the party activities are ending and staff is ready to move into room reset and final checkout tasks.",
-    timelineTitle: "Party Moved to Cleaning Up",
+    confirmationBody: "This moves the party into cleanup after payment and checkout tasks are handled.",
+    timelineTitle: "Cleanup Started",
     timelineIcon: "↻",
+    partyStatus: "CLEANING_UP",
   },
   {
-    status: "CLEANING_UP",
-    label: "Cleaning Up",
-    shortLabel: "Cleanup",
-    description: "The party is ending. Staff should reset the room, check out guests, and close remaining balances.",
-    nextActionLabel: "Complete Party",
-    confirmationTitle: "Complete this party?",
-    confirmationBody:
-      "This closes the party workflow, keeps the records preserved, and moves the party out of the active operations dashboard.",
-    timelineTitle: "Party Completed",
+    key: "CLEANUP",
+    label: "Cleanup",
+    description: "Reset the room, check out guests, save notes, and finish the event.",
+    nextActionLabel: "Ready to Complete",
+    confirmationTitle: "Mark cleanup done?",
+    confirmationBody: "This marks the progress bar complete. The Complete Party button will become available next.",
+    timelineTitle: "Cleanup Completed",
     timelineIcon: "✓",
-  },
-  {
-    status: "COMPLETED",
-    label: "Completed",
-    shortLabel: "Done",
-    description: "Party is finished. Records, timeline, guests, and payments are preserved.",
-    nextActionLabel: "Completed",
-    confirmationTitle: "Party completed",
-    confirmationBody: "This party has already been completed.",
-    timelineTitle: "Party Completed",
-    timelineIcon: "✓",
+    partyStatus: "CLEANING_UP",
   },
 ];
 
-export const partyWorkflowStatuses = partyWorkflowSteps.map((step) => step.status);
+export const partyWorkflowStepKeys = partyWorkflowSteps.map((step) => step.key);
 
-export function getWorkflowStep(status: string | null | undefined) {
-  return partyWorkflowSteps.find((step) => step.status === status) ?? partyWorkflowSteps[0];
+export function isPartyWorkflowStepKey(value: string): value is PartyWorkflowStepKey {
+  return partyWorkflowStepKeys.includes(value as PartyWorkflowStepKey);
 }
 
-export function getWorkflowStepIndex(status: string | null | undefined) {
-  const index = partyWorkflowSteps.findIndex((step) => step.status === status);
+export function getWorkflowStep(stepKey: string | null | undefined) {
+  return partyWorkflowSteps.find((step) => step.key === stepKey) ?? partyWorkflowSteps[0];
+}
+
+export function getWorkflowStepIndex(stepKey: string | null | undefined) {
+  const index = partyWorkflowSteps.findIndex((step) => step.key === stepKey);
   return index >= 0 ? index : 0;
 }
 
-export function getNextWorkflowStep(status: string | null | undefined) {
-  const index = getWorkflowStepIndex(status);
+export function getNextWorkflowStep(stepKey: string | null | undefined) {
+  const index = getWorkflowStepIndex(stepKey);
   return partyWorkflowSteps[index + 1] ?? null;
 }
 
-export function isWorkflowStatus(status: string): status is PartyWorkflowStatus {
-  return partyWorkflowStatuses.includes(status as PartyWorkflowStatus);
+export function getProgressPercent(stepKey: string | null | undefined) {
+  const index = getWorkflowStepIndex(stepKey);
+  return Math.round(((index + 1) / partyWorkflowSteps.length) * 100);
+}
+
+export function isWorkflowComplete(stepKey: string | null | undefined) {
+  return getWorkflowStepIndex(stepKey) >= partyWorkflowSteps.length - 1;
 }
