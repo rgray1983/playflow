@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 
 type EventTimelineItem = { id: string; title: string; body: string | null; icon: string | null; createdAt: string };
 type EventGuestRecord = { id: string; guestName: string | null; guestEmail?: string | null; guestPhone?: string | null; parentName?: string | null; status: string; waiverStatus?: string | null; checkedInAt: string | null; checkedOutAt?: string | null };
@@ -39,7 +39,6 @@ function normalizeEventToParty(event: EventRecord): Party {
 
 export default function PartyManagerPage() {
   const params = useParams<{ eventId: string }>();
-  const router = useRouter();
   const eventId = params.eventId;
   const [party, setParty] = useState<Party>(fallbackParty);
   const [loadingEvent, setLoadingEvent] = useState(true);
@@ -49,6 +48,7 @@ export default function PartyManagerPage() {
   const [activeGuestAction, setActiveGuestAction] = useState("");
   const [actionError, setActionError] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const loadParty = useCallback(async (options?: { silent?: boolean }) => {
     try {
@@ -129,6 +129,7 @@ export default function PartyManagerPage() {
       const response = await fetch(`/api/events/${party.id}/cancel`, { method: "POST" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to cancel party.");
+      setShowCancelConfirm(false);
       await loadParty({ silent: true });
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Unable to cancel party.");
@@ -150,7 +151,7 @@ export default function PartyManagerPage() {
             </div>
             <div className="flex items-center gap-3">
               {party.inviteUrl && <button onClick={openInviteLink} className="rounded-[10px] border border-[#B7D4FF] bg-[#EEF5FF] px-4 py-3 text-sm font-semibold text-[#0B55C6]">RSVP Link</button>}
-              <button disabled={party.status === "Cancelled" || cancelling} onClick={cancelParty} className="rounded-[10px] border border-[#FCA5A5] bg-white px-4 py-3 text-sm font-semibold text-[#9F1239] disabled:opacity-40">{cancelling ? "Cancelling..." : "Cancel Party"}</button>
+              <button disabled={party.status === "Cancelled" || cancelling || !party.id} onClick={() => setShowCancelConfirm(true)} className="rounded-[10px] border border-[#FCA5A5] bg-white px-4 py-3 text-sm font-semibold text-[#9F1239] disabled:opacity-40">{cancelling ? "Cancelling..." : "Cancel Party"}</button>
               <button disabled={party.status === "Cancelled"} className="rounded-[10px] bg-[#1E293B] px-5 py-3 text-sm font-semibold text-white disabled:opacity-40">{primaryAction}</button>
             </div>
           </header>
@@ -198,13 +199,36 @@ export default function PartyManagerPage() {
             </section>
 
             <aside className="space-y-3 overflow-y-auto">
-              <section className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm"><p className="text-sm font-semibold text-[#6B7280]">At a Glance</p><div className="mt-3 space-y-2 text-sm"><div className="flex justify-between"><span className="text-[#6B7280]">Mode</span><span className="font-semibold capitalize text-[#1E293B]">{partyMode}</span></div><div className="flex justify-between"><span className="text-[#6B7280]">Ready</span><span className="font-semibold text-[#1E293B]">{readinessPercent}%</span></div><div className="flex justify-between"><span className="text-[#6B7280]">Expected</span><span className="font-semibold text-[#1E293B]">{party.expectedCount}</span></div><div className="flex justify-between"><span className="text-[#6B7280]">Checked In</span><span className="font-semibold text-[#155E75]">{party.checkedInCount}</span></div><div className="flex justify-between"><span className="text-[#6B7280]">Checked Out</span><span className="font-semibold text-[#0B55C6]">{party.checkedOutCount}</span></div><div className="flex justify-between"><span className="text-[#6B7280]">No Show</span><span className="font-semibold text-[#4B5563]">{party.noShowCount}</span></div><div className="flex justify-between"><span className="text-[#6B7280]">Balance</span><span className="font-semibold text-[#9F1239]">{party.balanceDue}</span></div></div></section>
+              <section className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm"><p className="text-sm font-semibold text-[#6B7280]">At a Glance</p><div className="mt-3 space-y-2 text-sm"><div className="flex justify-between"><span className="text-[#6B7280]">Mode</span><span className="font-semibold capitalize text-[#1E293B]">{partyMode}</span></div><div className="flex justify-between"><span className="text-[#6B7280]">Ready</span><span className="font-semibold text-[#1E293B]">{readinessPercent}%</span></div><div className="flex justify-between"><span className="text-[#6B7280]">Guests</span><span className="font-semibold text-[#1E293B]">{party.checkedInCount}/{Math.max(party.guestCount, 1)}</span></div><div className="flex justify-between"><span className="text-[#6B7280]">Balance</span><span className="font-semibold text-[#9F1239]">{party.balanceDue}</span></div></div></section>
               {party.inviteUrl && <section className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm"><p className="text-sm font-semibold text-[#6B7280]">RSVP + Waiver Link</p><p className="mt-2 break-all rounded-[8px] bg-[#F6F0E6] p-3 text-xs text-[#1E293B]">{party.inviteUrl}</p><div className="mt-3 grid grid-cols-3 gap-2"><button onClick={openInviteLink} className="rounded-[8px] border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-[#1E293B]">Open</button><button onClick={copyInviteLink} className="rounded-[8px] bg-[#1E293B] px-3 py-2 text-xs font-semibold text-white">Copy</button><button onClick={emailInviteLink} className="rounded-[8px] border border-[#B7D4FF] bg-[#EEF5FF] px-3 py-2 text-xs font-semibold text-[#0B55C6]">Email</button></div>{copyStatus && <p className="mt-2 rounded-[8px] bg-[#F6F0E6] px-3 py-2 text-xs font-semibold text-[#1E293B]">{copyStatus}</p>}</section>}
-              <section className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm"><p className="text-sm font-semibold text-[#6B7280]">Manager Actions</p><div className="mt-3 space-y-2"><button className="w-full rounded-[8px] bg-[#F6F0E6] px-3 py-2 text-left text-xs font-semibold text-[#1E293B]">Send Reminder</button><button className="w-full rounded-[8px] bg-[#F6F0E6] px-3 py-2 text-left text-xs font-semibold text-[#1E293B]">Add Staff Note</button><button className="w-full rounded-[8px] bg-[#F6F0E6] px-3 py-2 text-left text-xs font-semibold text-[#1E293B]">Open POS Ticket</button><button onClick={() => router.push("/parties")} className="w-full rounded-[8px] bg-[#1E293B] px-3 py-2 text-left text-xs font-semibold text-white">Back to Dashboard</button></div></section>
             </aside>
           </div>
         </section>
       </div>
+
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-5">
+          <div className="w-full max-w-md rounded-[18px] bg-white p-6 shadow-xl">
+            <p className="text-sm font-semibold text-[#9F1239]">Confirm Cancellation</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#1E293B]">Cancel this party?</h2>
+            <p className="mt-3 text-sm text-[#6B7280]">
+              This will hide the party from active dashboard views. It can still be found with the Cancelled filter and restored later.
+            </p>
+            <div className="mt-4 rounded-[12px] bg-[#F6F0E6] p-4">
+              <p className="font-semibold text-[#1E293B]">{party.title}</p>
+              <p className="mt-1 text-sm text-[#6B7280]">{party.date} • {party.time}</p>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button onClick={() => setShowCancelConfirm(false)} disabled={cancelling} className="rounded-[10px] border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#1E293B] disabled:opacity-50">
+                Keep Party
+              </button>
+              <button onClick={cancelParty} disabled={cancelling} className="rounded-[10px] bg-[#9F1239] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+                {cancelling ? "Cancelling..." : "Yes, Cancel Party"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

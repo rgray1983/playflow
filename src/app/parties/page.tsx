@@ -41,7 +41,16 @@ type EventRecord = {
   guests?: EventGuestRecord[];
 };
 
-type DashboardFilter = "active" | "today" | "upcoming" | "needs-attention" | "balance-due" | "waivers-needed" | "pending" | "cancelled" | "completed";
+type DashboardFilter =
+  | "active"
+  | "today"
+  | "upcoming"
+  | "needs-attention"
+  | "balance-due"
+  | "waivers-needed"
+  | "pending"
+  | "cancelled"
+  | "completed";
 
 type PartyCard = {
   id: string;
@@ -201,7 +210,9 @@ export default function PartiesPage() {
   const [parties, setParties] = useState<PartyCard[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [activeCancelId, setActiveCancelId] = useState("");
+  const [activeRestoreId, setActiveRestoreId] = useState("");
   const [cancelError, setCancelError] = useState("");
+  const [partyToCancel, setPartyToCancel] = useState<PartyCard | null>(null);
 
   const loadEvents = useCallback(async (options?: { silent?: boolean }) => {
     try {
@@ -290,23 +301,40 @@ export default function PartiesPage() {
     };
   }, [operationalParties, todayParties.length, upcomingParties.length]);
 
-  async function cancelParty(partyId: string) {
-    const confirmed = window.confirm("Cancel this party? It will be hidden from the active dashboard and can still be found with the Cancelled filter.");
-    if (!confirmed) return;
+  async function confirmCancelParty() {
+    if (!partyToCancel) return;
 
-    setActiveCancelId(partyId);
+    setActiveCancelId(partyToCancel.id);
     setCancelError("");
 
     try {
-      const response = await fetch(`/api/events/${partyId}/cancel`, { method: "POST" });
+      const response = await fetch(`/api/events/${partyToCancel.id}/cancel`, { method: "POST" });
       const data = await response.json();
 
       if (!response.ok) throw new Error(data.error || "Unable to cancel party.");
+      setPartyToCancel(null);
       await loadEvents({ silent: true });
     } catch (error) {
       setCancelError(error instanceof Error ? error.message : "Unable to cancel party.");
     } finally {
       setActiveCancelId("");
+    }
+  }
+
+  async function restoreParty(partyId: string) {
+    setActiveRestoreId(partyId);
+    setCancelError("");
+
+    try {
+      const response = await fetch(`/api/events/${partyId}/uncancel`, { method: "POST" });
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data.error || "Unable to restore party.");
+      await loadEvents({ silent: true });
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : "Unable to restore party.");
+    } finally {
+      setActiveRestoreId("");
     }
   }
 
@@ -437,6 +465,7 @@ export default function PartiesPage() {
                 filteredParties.map((party) => {
                   const eventType = getEventType(party.eventTypeName);
                   const canCancel = party.status !== "Cancelled" && party.status !== "Completed";
+                  const canRestore = party.status === "Cancelled";
 
                   return (
                     <article key={party.id} className="rounded-[14px] border border-black/10 bg-white p-4 shadow-sm">
@@ -461,8 +490,13 @@ export default function PartiesPage() {
                       <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
                         <Link href={`/parties/${party.id}`} className="rounded-[10px] bg-[#1E293B] px-4 py-3 text-center text-sm font-semibold text-white">Open Party</Link>
                         {canCancel && (
-                          <button onClick={() => cancelParty(party.id)} disabled={activeCancelId === party.id} className="rounded-[10px] border border-[#FCA5A5] bg-[#FFF7F7] px-4 py-3 text-sm font-semibold text-[#9F1239] disabled:opacity-50">
+                          <button onClick={() => setPartyToCancel(party)} disabled={activeCancelId === party.id} className="rounded-[10px] border border-[#FCA5A5] bg-[#FFF7F7] px-4 py-3 text-sm font-semibold text-[#9F1239] disabled:opacity-50">
                             {activeCancelId === party.id ? "Cancelling..." : "Cancel"}
+                          </button>
+                        )}
+                        {canRestore && (
+                          <button onClick={() => restoreParty(party.id)} disabled={activeRestoreId === party.id} className="rounded-[10px] border border-[#B7D4FF] bg-[#EEF5FF] px-4 py-3 text-sm font-semibold text-[#0B55C6] disabled:opacity-50">
+                            {activeRestoreId === party.id ? "Restoring..." : "Uncancel"}
                           </button>
                         )}
                       </div>
@@ -479,6 +513,30 @@ export default function PartiesPage() {
           </div>
         </section>
       </div>
+
+      {partyToCancel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-5">
+          <div className="w-full max-w-md rounded-[18px] bg-white p-6 shadow-xl">
+            <p className="text-sm font-semibold text-[#9F1239]">Confirm Cancellation</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#1E293B]">Cancel this party?</h2>
+            <p className="mt-3 text-sm text-[#6B7280]">
+              This will hide the party from active views. You can still find it with the Cancelled filter and uncancel it later.
+            </p>
+            <div className="mt-4 rounded-[12px] bg-[#F6F0E6] p-4">
+              <p className="font-semibold text-[#1E293B]">{partyToCancel.title}</p>
+              <p className="mt-1 text-sm text-[#6B7280]">{partyToCancel.date} • {partyToCancel.time}</p>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button onClick={() => setPartyToCancel(null)} disabled={activeCancelId === partyToCancel.id} className="rounded-[10px] border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#1E293B] disabled:opacity-50">
+                Keep Party
+              </button>
+              <button onClick={confirmCancelParty} disabled={activeCancelId === partyToCancel.id} className="rounded-[10px] bg-[#9F1239] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+                {activeCancelId === partyToCancel.id ? "Cancelling..." : "Yes, Cancel Party"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
