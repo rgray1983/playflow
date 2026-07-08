@@ -584,7 +584,7 @@ export default function PartiesPage() {
 
                 <section className="mb-4 rounded-[14px] border border-black/10 bg-white p-3">
                   {[
-                    { key: "next", label: "Flight Checklist", detail: `${checklist.filter((item) => item.done).length}/${checklist.length} complete` },
+                    { key: "next", label: `${selectedParty.eventTypeName} Checklist`, detail: `${checklist.filter((item) => item.done).length}/${checklist.length} complete` },
                     { key: "guests", label: "Guest Check-In", detail: `${selectedParty.checkedInCount}/${Math.max(selectedParty.guestCount, 1)} checked in` },
                     { key: "money", label: "Payments", detail: selectedParty.balanceDueNumber > 0 ? selectedParty.balanceDue : "Paid" },
                     { key: "timeline", label: "Timeline", detail: `${selectedParty.timelineItems.length} events` },
@@ -605,8 +605,8 @@ export default function PartiesPage() {
 
                 {openCard === "next" && (
                   <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
-                    <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Flight Checklist</h3>
-                    <p className="mt-1 text-sm text-[#6B7280]">Only the next meaningful action stays visually important.</p>
+                    <h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">{selectedParty.eventTypeName} Checklist</h3>
+                    <p className="mt-1 text-sm text-[#6B7280]">Checklist items will change by event type as each event workflow is defined.</p>
 
                     <div className="mt-4 space-y-2">
                       {checklist.map((item, index) => {
@@ -615,18 +615,18 @@ export default function PartiesPage() {
                         return (
                           <div
                             key={item.label}
-                            className={`flex items-center gap-3 rounded-[10px] p-4 ${
+                            className={`flex items-center gap-3 rounded-[10px] px-3 py-2.5 ${
                               isNext ? "border border-[#1E293B] bg-white" : item.done ? "bg-white/70" : "bg-white"
                             }`}
                           >
-                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${item.done ? "bg-[#D7F1EC] text-[#155E75]" : isNext ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#6B7280]"}`}>
+                            <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${item.done ? "bg-[#D7F1EC] text-[#155E75]" : isNext ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#6B7280]"}`}>
                               {item.done ? "✓" : index + 1}
                             </div>
                             <div className="flex-1">
-                              <p className="font-semibold text-[#1E293B]">{item.label}</p>
-                              {isNext && <p className="mt-1 text-xs text-[#6B7280]">Recommended next action</p>}
+                              <p className="text-sm font-semibold text-[#1E293B]">{item.label}</p>
+                              {isNext && <p className="text-[11px] text-[#6B7280]">Next action</p>}
                             </div>
-                            {isNext && <button className="rounded-[8px] bg-[#1E293B] px-4 py-2 text-xs font-semibold text-white">{primaryAction}</button>}
+                            {isNext && <button className="rounded-[8px] bg-[#1E293B] px-3 py-2 text-xs font-semibold text-white">{primaryAction}</button>}
                           </div>
                         );
                       })}
