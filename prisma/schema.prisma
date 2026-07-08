@@ -43,6 +43,9 @@ enum VisitStatus {
 enum PartyStatus {
   PENDING
   CONFIRMED
+  READY
+  IN_PROGRESS
+  CLEANING_UP
   COMPLETED
   CANCELLED
 }
