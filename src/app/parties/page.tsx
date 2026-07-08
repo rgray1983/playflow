@@ -36,6 +36,17 @@ type EventRecord = {
   notes: string;
   inviteUrl: string | null;
   timelineItems: EventTimelineItem[];
+  guests?: {
+    id: string;
+    guestName: string | null;
+    guestEmail?: string | null;
+    guestPhone?: string | null;
+    parentName?: string | null;
+    status: string;
+    waiverStatus?: string | null;
+    waiverSignedAt?: string | null;
+    checkedInAt: string | null;
+  }[];
 };
 
 type PartyMode = "before" | "during" | "after";
@@ -65,17 +76,6 @@ type Party = {
   notes: string;
   inviteUrl: string | null;
   timelineItems: EventTimelineItem[];
-  guests?: {
-    id: string;
-    guestName: string | null;
-    guestEmail?: string | null;
-    guestPhone?: string | null;
-    parentName?: string | null;
-    status: string;
-    waiverStatus?: string | null;
-    waiverSignedAt?: string | null;
-    checkedInAt: string | null;
-  }[];
   guests: {
     name: string;
     status: string;
