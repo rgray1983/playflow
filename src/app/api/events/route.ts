@@ -117,6 +117,7 @@ function serializeParty(party: {
   inviteUrl: string | null;
   incidentCount?: number;
   timelineItems?: { id: string; title: string; body: string | null; icon: string | null; createdAt: Date }[];
+  payments?: { id: string; amount: unknown; method: string; notes: string | null; collectedAt: Date; createdAt: Date }[];
   guests?: {
     id: string;
     guestName: string | null;
@@ -155,6 +156,15 @@ function serializeParty(party: {
     inviteUrl: party.inviteUrl,
     incidentCount: party.incidentCount ?? 0,
     timelineItems: party.timelineItems ?? [],
+    payments: (party.payments ?? []).map((payment) => ({
+      id: payment.id,
+      amount: Number(payment.amount ?? 0),
+      method: payment.method,
+      notes: payment.notes ?? "",
+      staff: "Staff",
+      collectedAt: payment.collectedAt,
+      createdAt: payment.createdAt,
+    })),
     guests: (party.guests ?? []).map((guest) => ({
       id: guest.id,
       guestName: guest.guestName,
@@ -194,6 +204,7 @@ export async function GET() {
       include: {
         guests: { orderBy: { createdAt: "asc" } },
         timelineItems: { orderBy: { createdAt: "desc" }, take: 10 },
+        payments: { orderBy: { collectedAt: "desc" } },
       },
       orderBy: { eventDate: "asc" },
     });
@@ -298,6 +309,7 @@ export async function POST(request: Request) {
         include: {
           guests: { orderBy: { createdAt: "asc" } },
           timelineItems: { orderBy: { createdAt: "desc" } },
+          payments: { orderBy: { collectedAt: "desc" } },
         },
       });
     });
