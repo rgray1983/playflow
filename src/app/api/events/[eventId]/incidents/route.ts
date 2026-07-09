@@ -19,6 +19,12 @@ function jsonError(error: unknown, fallbackMessage: string, status = 500) {
   return NextResponse.json({ error: error instanceof Error ? error.message : fallbackMessage }, { status });
 }
 
+function isMissingIncidentTableError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const message = error instanceof Error ? error.message : JSON.stringify(error);
+  return message.includes("EventIncidentReport") && (message.includes("does not exist") || message.includes("TableDoesNotExist"));
+}
+
 function cleanText(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() : fallback;
 }
@@ -64,27 +70,32 @@ export async function GET(_request: Request, { params }: Params) {
       return NextResponse.json({ error: "Party or event was not found." }, { status: 404 });
     }
 
-    const incidents = await prisma.$queryRawUnsafe<{
-      id: string;
-      tenantId: string;
-      partyId: string;
-      incidentType: string;
-      severity: string;
-      description: string;
-      staffMember: string | null;
-      guestName: string | null;
-      status: string;
-      createdAt: Date;
-      updatedAt: Date;
-    }[]>(
-      `SELECT id, "tenantId", "partyId", "incidentType", severity, description, "staffMember", "guestName", status, "createdAt", "updatedAt"
-       FROM "EventIncidentReport"
-       WHERE "partyId" = $1
-       ORDER BY "createdAt" DESC`,
-      eventId,
-    );
+    try {
+      const incidents = await prisma.$queryRawUnsafe<{
+        id: string;
+        tenantId: string;
+        partyId: string;
+        incidentType: string;
+        severity: string;
+        description: string;
+        staffMember: string | null;
+        guestName: string | null;
+        status: string;
+        createdAt: Date;
+        updatedAt: Date;
+      }[]>(
+        `SELECT id, "tenantId", "partyId", "incidentType", severity, description, "staffMember", "guestName", status, "createdAt", "updatedAt"
+         FROM "EventIncidentReport"
+         WHERE "partyId" = $1
+         ORDER BY "createdAt" DESC`,
+        eventId,
+      );
 
-    return NextResponse.json({ incidents: incidents.map(normalizeIncident) });
+      return NextResponse.json({ incidents: incidents.map(normalizeIncident) });
+    } catch (error) {
+      if (isMissingIncidentTableError(error)) return NextResponse.json({ incidents: [] });
+      throw error;
+    }
   } catch (error) {
     return jsonError(error, "Unable to load incident reports.");
   }
@@ -116,62 +127,73 @@ export async function POST(request: Request, { params }: Params) {
 
     const incidentId = createIncidentId();
 
-    const incident = await prisma.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe(
-        `INSERT INTO "EventIncidentReport" (id, "tenantId", "partyId", "incidentType", severity, description, "staffMember", "guestName", status, "createdAt", "updatedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'OPEN', NOW(), NOW())`,
-        incidentId,
-        party.tenantId,
-        party.id,
-        incidentType,
-        severity,
-        description,
-        staffMember,
-        guestName,
-      );
+    try {
+      const incident = await prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          `INSERT INTO "EventIncidentReport" (id, "tenantId", "partyId", "incidentType", severity, description, "staffMember", "guestName", status, "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'OPEN', NOW(), NOW())`,
+          incidentId,
+          party.tenantId,
+          party.id,
+          incidentType,
+          severity,
+          description,
+          staffMember,
+          guestName,
+        );
 
-      await tx.eventTimelineItem.create({
-        data: {
-          tenantId: party.tenantId,
-          partyId: party.id,
-          icon: "⚠",
-          title: `${incidentType} Report Created`,
-          body: guestName ? `${guestName}: ${description}` : description,
-          metadata: {
-            source: "party-manager",
-            action: "create-incident-report",
-            incidentId,
-            incidentType,
-            severity,
-            staffMember,
-            guestName,
+        await tx.eventTimelineItem.create({
+          data: {
+            tenantId: party.tenantId,
+            partyId: party.id,
+            icon: "⚠",
+            title: `${incidentType} Report Created`,
+            body: guestName ? `${guestName}: ${description}` : description,
+            metadata: {
+              source: "party-manager",
+              action: "create-incident-report",
+              incidentId,
+              incidentType,
+              severity,
+              staffMember,
+              guestName,
+            },
           },
-        },
+        });
+
+        const [createdIncident] = await tx.$queryRawUnsafe<{
+          id: string;
+          tenantId: string;
+          partyId: string;
+          incidentType: string;
+          severity: string;
+          description: string;
+          staffMember: string | null;
+          guestName: string | null;
+          status: string;
+          createdAt: Date;
+          updatedAt: Date;
+        }[]>(
+          `SELECT id, "tenantId", "partyId", "incidentType", severity, description, "staffMember", "guestName", status, "createdAt", "updatedAt"
+           FROM "EventIncidentReport"
+           WHERE id = $1`,
+          incidentId,
+        );
+
+        return createdIncident;
       });
 
-      const [createdIncident] = await tx.$queryRawUnsafe<{
-        id: string;
-        tenantId: string;
-        partyId: string;
-        incidentType: string;
-        severity: string;
-        description: string;
-        staffMember: string | null;
-        guestName: string | null;
-        status: string;
-        createdAt: Date;
-        updatedAt: Date;
-      }[]>(
-        `SELECT id, "tenantId", "partyId", "incidentType", severity, description, "staffMember", "guestName", status, "createdAt", "updatedAt"
-         FROM "EventIncidentReport"
-         WHERE id = $1`,
-        incidentId,
-      );
+      return NextResponse.json({ incident: normalizeIncident(incident) });
+    } catch (error) {
+      if (isMissingIncidentTableError(error)) {
+        return NextResponse.json(
+          { error: "Incident reports are not ready yet. Run npx prisma db push, then try again." },
+          { status: 503 },
+        );
+      }
 
-      return createdIncident;
-    });
-
-    return NextResponse.json({ incident: normalizeIncident(incident) });
+      throw error;
+    }
   } catch (error) {
     return jsonError(error, "Unable to create incident report.");
   }
