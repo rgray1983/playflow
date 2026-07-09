@@ -35,6 +35,12 @@ function jsonError(error: unknown, fallbackMessage: string, status = 500) {
   return NextResponse.json({ error: error instanceof Error ? error.message : fallbackMessage }, { status });
 }
 
+function isMissingIncidentTableError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const message = error instanceof Error ? error.message : JSON.stringify(error);
+  return message.includes("EventIncidentReport") && (message.includes("does not exist") || message.includes("TableDoesNotExist"));
+}
+
 function toDecimal(value: unknown) {
   if (value === null || value === undefined || value === "") return new Prisma.Decimal(0);
   const parsed = Number(value);
@@ -88,8 +94,8 @@ async function loadIncidentCounts(partyIds: string[]) {
 
     return new Map(rows.map((row) => [row.partyId, normalizeCount(row.count)]));
   } catch (error) {
-    console.warn("Incident reports table is not available yet.", error);
-    return new Map<string, number>();
+    if (isMissingIncidentTableError(error)) return new Map<string, number>();
+    throw error;
   }
 }
 
