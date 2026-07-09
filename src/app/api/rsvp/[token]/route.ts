@@ -8,12 +8,14 @@ type Params = {
 };
 
 type RsvpPayload = {
+  response?: "attending" | "declined";
   guestName?: string;
   parentName?: string;
   guestEmail?: string;
   guestPhone?: string;
   waiverAccepted?: boolean;
   notes?: string;
+  declineReason?: string;
 };
 
 function jsonError(error: unknown, fallbackMessage: string, status = 500) {
@@ -37,14 +39,6 @@ function serializeParty(party: {
   packageName: string | null;
   guestOfHonor: string | null;
   notes: string | null;
-  guests: {
-    id: string;
-    guestName: string | null;
-    parentName: string | null;
-    status: string;
-    waiverStatus: string | null;
-    createdAt: Date;
-  }[];
 }) {
   return {
     id: party.id,
@@ -56,14 +50,6 @@ function serializeParty(party: {
     packageName: party.packageName,
     guestOfHonor: party.guestOfHonor,
     notes: party.notes ?? "",
-    guests: party.guests.map((guest) => ({
-      id: guest.id,
-      guestName: guest.guestName,
-      parentName: guest.parentName,
-      status: guest.status,
-      waiverStatus: guest.waiverStatus ?? "NEEDED",
-      createdAt: guest.createdAt,
-    })),
   };
 }
 
@@ -74,13 +60,6 @@ export async function GET(_request: Request, { params }: Params) {
     const party = await prisma.party.findUnique({
       where: {
         inviteToken: token,
-      },
-      include: {
-        guests: {
-          orderBy: {
-            createdAt: "asc",
-          },
-        },
       },
     });
 
@@ -118,6 +97,7 @@ export async function POST(request: Request, { params }: Params) {
       return jsonError(error, "Invalid RSVP request body.", 400);
     }
 
+    const responseType = body.response === "declined" ? "declined" : "attending";
     const guestName = body.guestName?.trim();
 
     if (!guestName) {
@@ -125,6 +105,7 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     const waiverAccepted = Boolean(body.waiverAccepted);
+    const declineReason = body.declineReason?.trim() || body.notes?.trim() || null;
 
     const guest = await prisma.$transaction(async (tx) => {
       const createdGuest = await tx.partyGuest.create({
@@ -135,10 +116,13 @@ export async function POST(request: Request, { params }: Params) {
           parentName: body.parentName?.trim() || null,
           guestEmail: body.guestEmail?.trim() || null,
           guestPhone: body.guestPhone?.trim() || null,
-          status: "EXPECTED",
-          waiverStatus: waiverAccepted ? "SIGNED" : "NEEDED",
-          waiverSignedAt: waiverAccepted ? new Date() : null,
-          notes: body.notes?.trim() || null,
+          status: responseType === "declined" ? "NO_SHOW" : "EXPECTED",
+          rsvpStatus: responseType === "declined" ? "DECLINED" : "ATTENDING",
+          waiverStatus: responseType === "declined" ? "NOT_NEEDED" : waiverAccepted ? "SIGNED" : "NEEDED",
+          waiverSignedAt: responseType === "attending" && waiverAccepted ? new Date() : null,
+          declinedAt: responseType === "declined" ? new Date() : null,
+          declineReason: responseType === "declined" ? declineReason : null,
+          notes: responseType === "declined" ? null : body.notes?.trim() || null,
         },
       });
 
@@ -146,11 +130,12 @@ export async function POST(request: Request, { params }: Params) {
         data: {
           tenantId: party.tenantId,
           partyId: party.id,
-          icon: waiverAccepted ? "✓" : "✉",
-          title: waiverAccepted ? "Guest RSVP + Waiver Signed" : "Guest RSVP Received",
-          body: `${guestName} was added from the RSVP link.`,
+          icon: responseType === "declined" ? "–" : waiverAccepted ? "✓" : "✉",
+          title: responseType === "declined" ? "Guest Declined RSVP" : waiverAccepted ? "Guest RSVP + Waiver Signed" : "Guest RSVP Received",
+          body: responseType === "declined" ? `${guestName} cannot attend.${declineReason ? ` Reason: ${declineReason}` : ""}` : `${guestName} was added from the RSVP link.`,
           metadata: {
             source: "rsvp",
+            response: responseType,
             guestId: createdGuest.id,
           },
         },
@@ -165,8 +150,11 @@ export async function POST(request: Request, { params }: Params) {
         guestName: guest.guestName,
         parentName: guest.parentName,
         status: guest.status,
+        rsvpStatus: guest.rsvpStatus,
         waiverStatus: guest.waiverStatus,
         waiverSignedAt: guest.waiverSignedAt,
+        declinedAt: guest.declinedAt,
+        declineReason: guest.declineReason,
       },
     });
   } catch (error) {

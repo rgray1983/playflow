@@ -1,0 +1,6 @@
+ALTER TABLE "PartyGuest"
+  ADD COLUMN IF NOT EXISTS "rsvpStatus" TEXT NOT NULL DEFAULT 'ATTENDING',
+  ADD COLUMN IF NOT EXISTS "declinedAt" TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "declineReason" TEXT;
+
+CREATE INDEX IF NOT EXISTS "PartyGuest_rsvpStatus_idx" ON "PartyGuest"("rsvpStatus");

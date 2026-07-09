@@ -125,8 +125,11 @@ function serializeParty(party: {
     guestPhone?: string | null;
     parentName?: string | null;
     status: string;
+    rsvpStatus?: string | null;
     waiverStatus?: string | null;
     waiverSignedAt?: Date | null;
+    declinedAt?: Date | null;
+    declineReason?: string | null;
     checkedInAt: Date | null;
     checkedOutAt?: Date | null;
   }[];
@@ -172,8 +175,11 @@ function serializeParty(party: {
       guestPhone: guest.guestPhone ?? null,
       parentName: guest.parentName ?? null,
       status: guest.status,
+      rsvpStatus: guest.rsvpStatus ?? "ATTENDING",
       waiverStatus: guest.waiverStatus ?? "NEEDED",
       waiverSignedAt: guest.waiverSignedAt ?? null,
+      declinedAt: guest.declinedAt ?? null,
+      declineReason: guest.declineReason ?? null,
       checkedInAt: guest.checkedInAt,
       checkedOutAt: guest.checkedOutAt ?? null,
     })),
