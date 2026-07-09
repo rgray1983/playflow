@@ -6,11 +6,11 @@ import AddOnsSettings from "./components/AddOnsSettings";
 import AdmissionsSettings from "./components/AdmissionsSettings";
 import BrandingSettings from "./components/BrandingSettings";
 import BusinessProfileSettings from "./components/BusinessProfileSettings";
+import CommerceSettings from "./components/CommerceSettings";
 import EventTypesSettings from "./components/EventTypesSettings";
 import MembershipsSettings from "./components/MembershipsSettings";
 import ModulesSettings from "./components/ModulesSettings";
 import PackagesSettings from "./components/PackagesSettings";
-import POSSettings from "./components/POSSettings";
 import StaffRolesSettings from "./components/StaffRolesSettings";
 import WaiverSettings from "./components/WaiverSettings";
 
@@ -24,7 +24,7 @@ const settingsTabs = [
   "Packages",
   "Add-Ons",
   "Waivers",
-  "POS Settings",
+  "Commerce",
   "Staff Roles",
 ];
 
@@ -58,8 +58,8 @@ function renderSettingsSection(activeTab: string) {
       return <AddOnsSettings />;
     case "Waivers":
       return <WaiverSettings />;
-    case "POS Settings":
-      return <POSSettings />;
+    case "Commerce":
+      return <CommerceSettings />;
     case "Staff Roles":
       return <StaffRolesSettings />;
     default:

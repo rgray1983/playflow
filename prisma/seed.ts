@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { defaultCommerceSettings } from "../src/lib/commerce-settings";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
@@ -20,6 +21,22 @@ async function main() {
       name: "Palmetto Playhouse",
       slug: "palmetto-playhouse",
       timezone: "America/New_York",
+    },
+  });
+
+  await prisma.commerceSettings.create({
+    data: {
+      tenantId: tenant.id,
+      paymentMethods: defaultCommerceSettings.paymentMethods,
+      depositRules: defaultCommerceSettings.depositRules,
+      taxRules: defaultCommerceSettings.taxRules,
+      feeRules: defaultCommerceSettings.feeRules,
+      tipRules: defaultCommerceSettings.tipRules,
+      discountRules: defaultCommerceSettings.discountRules,
+      refundRules: defaultCommerceSettings.refundRules,
+      receiptRules: defaultCommerceSettings.receiptRules,
+      checkoutRules: defaultCommerceSettings.checkoutRules,
+      processorRules: defaultCommerceSettings.processorRules,
     },
   });
 

@@ -139,6 +139,26 @@ model Tenant {
   employeeTimeClocks EmployeeTimeClock[]
   eventTimelineItems EventTimelineItem[]
   eventPayments EventPayment[]
+  commerceSettings CommerceSettings?
+}
+
+model CommerceSettings {
+  id             String   @id @default(cuid())
+  tenantId       String   @unique
+  paymentMethods Json
+  depositRules   Json
+  taxRules       Json
+  feeRules       Json
+  tipRules       Json
+  discountRules  Json
+  refundRules    Json
+  receiptRules   Json
+  checkoutRules  Json
+  processorRules Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 model Family {
