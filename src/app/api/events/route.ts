@@ -93,6 +93,32 @@ async function loadIncidentCounts(partyIds: string[]) {
   }
 }
 
+function getRequestOrigin(request: Request) {
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost || request.headers.get("host");
+  const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
+
+  if (host) return `${forwardedProto}://${host}`;
+
+  try {
+    return new URL(request.url).origin;
+  } catch {
+    return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  }
+}
+
+function normalizePublicUrl(url: string | null | undefined, publicOrigin: string) {
+  if (!url) return null;
+
+  try {
+    const parsedUrl = new URL(url);
+    return `${publicOrigin.replace(/\/$/, "")}${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`;
+  } catch {
+    if (url.startsWith("/")) return `${publicOrigin.replace(/\/$/, "")}${url}`;
+    return url;
+  }
+}
+
 function serializeParty(party: {
   id: string;
   eventNumber: string | null;
@@ -133,7 +159,10 @@ function serializeParty(party: {
     checkedInAt: Date | null;
     checkedOutAt?: Date | null;
   }[];
-}) {
+}, publicOrigin?: string) {
+  const inviteUrl = publicOrigin ? normalizePublicUrl(party.inviteUrl, publicOrigin) : party.inviteUrl;
+  const confirmationUrl = publicOrigin ? normalizePublicUrl(party.confirmationUrl, publicOrigin) : party.confirmationUrl;
+
   return {
     id: party.id,
     eventNumber: party.eventNumber,
@@ -144,7 +173,7 @@ function serializeParty(party: {
     status: party.status,
     workflowStep: party.workflowStep ?? "PENDING",
     confirmationToken: party.confirmationToken ?? null,
-    confirmationUrl: party.confirmationUrl ?? null,
+    confirmationUrl: confirmationUrl ?? null,
     pendingExpiresAt: party.confirmationExpiresAt ?? null,
     confirmationExpiresAt: party.confirmationExpiresAt ?? null,
     confirmedAt: party.confirmedAt ?? null,
@@ -156,7 +185,7 @@ function serializeParty(party: {
     balanceDue: Number(party.balanceDue ?? 0),
     notes: party.notes ?? "",
     inviteToken: party.inviteToken,
-    inviteUrl: party.inviteUrl,
+    inviteUrl,
     incidentCount: party.incidentCount ?? 0,
     timelineItems: party.timelineItems ?? [],
     payments: (party.payments ?? []).map((payment) => ({
@@ -190,9 +219,8 @@ function createToken() {
   return randomBytes(18).toString("base64url");
 }
 
-function createUrl(path: string, token: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  return `${baseUrl.replace(/\/$/, "")}/${path}/${token}`;
+function createUrl(publicOrigin: string, path: string, token: string) {
+  return `${publicOrigin.replace(/\/$/, "")}/${path}/${token}`;
 }
 
 async function nextEventNumber(tenantId: string) {
@@ -200,7 +228,7 @@ async function nextEventNumber(tenantId: string) {
   return `EVT-${String(count + 1).padStart(6, "0")}`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const tenant = await getTenant();
     if (!tenant) return NextResponse.json({ events: [] });
@@ -215,13 +243,14 @@ export async function GET() {
       orderBy: { eventDate: "asc" },
     });
 
+    const publicOrigin = getRequestOrigin(request);
     const incidentCounts = await loadIncidentCounts(events.map((event) => event.id));
     const eventsWithIncidentCounts = events.map((event) => ({
       ...event,
       incidentCount: incidentCounts.get(event.id) ?? 0,
     }));
 
-    return NextResponse.json({ events: eventsWithIncidentCounts.map(serializeParty) });
+    return NextResponse.json({ events: eventsWithIncidentCounts.map((event) => serializeParty(event, publicOrigin)) });
   } catch (error) {
     return jsonError(error, "Unable to load events.");
   }
@@ -247,14 +276,15 @@ export async function POST(request: Request) {
     const customerName = `${parentFirstName} ${parentLastName}`.trim();
     if (!customerName) return NextResponse.json({ error: "Customer name is required." }, { status: 400 });
 
+    const publicOrigin = getRequestOrigin(request);
     const eventDate = parseEventDate(body.eventDate);
     const startTime = combineDateAndTime(body.eventDate, body.startTime);
     const endTime = body.endTime ? combineDateAndTime(body.eventDate, body.endTime) : addDuration(startTime);
     const eventNumber = await nextEventNumber(tenant.id);
     const inviteToken = createToken();
-    const inviteUrl = createUrl("rsvp", inviteToken);
+    const inviteUrl = createUrl(publicOrigin, "rsvp", inviteToken);
     const confirmationToken = createToken();
-    const confirmationUrl = createUrl("confirm-party", confirmationToken);
+    const confirmationUrl = createUrl(publicOrigin, "confirm-party", confirmationToken);
     const confirmationExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
     const depositMethod = toPaymentMethod(body.depositStatus);
     const depositAmount = body.depositStatus === "waived" ? new Prisma.Decimal(0) : toDecimal(body.depositAmount);
@@ -320,7 +350,7 @@ export async function POST(request: Request) {
       });
     });
 
-    return NextResponse.json({ event: serializeParty({ ...event, incidentCount: 0 }) });
+    return NextResponse.json({ event: serializeParty({ ...event, incidentCount: 0 }, publicOrigin) });
   } catch (error) {
     return jsonError(error, "Unable to create event.");
   }
