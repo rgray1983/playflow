@@ -72,8 +72,8 @@ export default function CompanySettingsPage() {
 
   return (
     <main className="h-screen overflow-hidden bg-[#E7E3DA] p-5 text-[#202633] antialiased">
-      <div className="flex h-full overflow-hidden rounded-[18px] bg-[#F6F0E6] shadow-sm">
-        <aside className="relative h-full w-[260px] shrink-0 border-r border-black/10 bg-[#F2EFE8] px-6 py-7">
+      <div className="flex h-full min-h-0 overflow-hidden rounded-[18px] bg-[#F6F0E6] shadow-sm">
+        <aside className="relative h-full min-h-0 w-[260px] shrink-0 overflow-y-auto border-r border-black/10 bg-[#F2EFE8] px-6 py-7 pb-24">
           <div className="mb-9">
             <div className="mb-2 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#1E293B] text-sm font-semibold text-white">
@@ -119,8 +119,8 @@ export default function CompanySettingsPage() {
           </div>
         </aside>
 
-        <section className="h-full flex-1 overflow-hidden px-6 py-6">
-          <header className="mb-5 flex items-start justify-between gap-5">
+        <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden px-6 py-6">
+          <header className="mb-5 flex shrink-0 items-start justify-between gap-5">
             <div>
               <p className="text-sm font-semibold text-[#8A6D3B]">
                 Admin Configuration
@@ -137,8 +137,8 @@ export default function CompanySettingsPage() {
             </div>
           </header>
 
-          <div className="grid h-[calc(100vh-125px)] grid-cols-[280px_1fr] gap-3">
-            <aside className="overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
+          <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)] gap-3">
+            <aside className="flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
               <div className="border-b border-black/10 p-4">
                 <p className="text-sm font-semibold text-[#1E293B]">
                   Settings Sections
@@ -148,7 +148,7 @@ export default function CompanySettingsPage() {
                 </p>
               </div>
 
-              <div className="space-y-1 p-3">
+              <div className="min-h-0 space-y-1 overflow-y-auto p-3 pb-10">
                 {settingsTabs.map((tab) => (
                   <button
                     key={tab}
@@ -165,8 +165,8 @@ export default function CompanySettingsPage() {
               </div>
             </aside>
 
-            <section className="overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
-              <div className="flex items-start justify-between gap-4 border-b border-black/10 p-5">
+            <section className="flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
+              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-black/10 p-5">
                 <div>
                   <p className="text-sm font-semibold text-[#6B7280]">
                     Current Section
@@ -181,7 +181,7 @@ export default function CompanySettingsPage() {
                 </span>
               </div>
 
-              <div className="h-full overflow-y-auto p-5 pb-24">
+              <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-32">
                 {renderSettingsSection(activeTab)}
               </div>
             </section>
