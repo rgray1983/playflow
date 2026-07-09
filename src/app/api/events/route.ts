@@ -64,6 +64,35 @@ function toPaymentMethod(value: CreateEventPayload["depositStatus"]) {
   return null;
 }
 
+function normalizeCount(value: bigint | number | string | null | undefined) {
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+async function loadIncidentCounts(partyIds: string[]) {
+  if (partyIds.length === 0) return new Map<string, number>();
+
+  try {
+    const rows = await prisma.$queryRawUnsafe<{ partyId: string; count: bigint | number | string }[]>(
+      `SELECT "partyId", COUNT(*) AS count
+       FROM "EventIncidentReport"
+       WHERE "partyId" = ANY($1::text[])
+       GROUP BY "partyId"`,
+      partyIds,
+    );
+
+    return new Map(rows.map((row) => [row.partyId, normalizeCount(row.count)]));
+  } catch (error) {
+    console.warn("Incident reports table is not available yet.", error);
+    return new Map<string, number>();
+  }
+}
+
 function serializeParty(party: {
   id: string;
   eventNumber: string | null;
@@ -86,6 +115,7 @@ function serializeParty(party: {
   notes: string | null;
   inviteToken: string | null;
   inviteUrl: string | null;
+  incidentCount?: number;
   timelineItems?: { id: string; title: string; body: string | null; icon: string | null; createdAt: Date }[];
   guests?: {
     id: string;
@@ -123,6 +153,7 @@ function serializeParty(party: {
     notes: party.notes ?? "",
     inviteToken: party.inviteToken,
     inviteUrl: party.inviteUrl,
+    incidentCount: party.incidentCount ?? 0,
     timelineItems: party.timelineItems ?? [],
     guests: (party.guests ?? []).map((guest) => ({
       id: guest.id,
@@ -167,7 +198,13 @@ export async function GET() {
       orderBy: { eventDate: "asc" },
     });
 
-    return NextResponse.json({ events: events.map(serializeParty) });
+    const incidentCounts = await loadIncidentCounts(events.map((event) => event.id));
+    const eventsWithIncidentCounts = events.map((event) => ({
+      ...event,
+      incidentCount: incidentCounts.get(event.id) ?? 0,
+    }));
+
+    return NextResponse.json({ events: eventsWithIncidentCounts.map(serializeParty) });
   } catch (error) {
     return jsonError(error, "Unable to load events.");
   }
@@ -265,7 +302,7 @@ export async function POST(request: Request) {
       });
     });
 
-    return NextResponse.json({ event: serializeParty(event) });
+    return NextResponse.json({ event: serializeParty({ ...event, incidentCount: 0 }) });
   } catch (error) {
     return jsonError(error, "Unable to create event.");
   }
