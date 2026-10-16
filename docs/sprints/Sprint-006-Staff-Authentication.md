@@ -1,6 +1,6 @@
 # Sprint 006 — Staff authentication and business access
 
-Status: In verification
+Status: Implemented in preview; owner onboarding / visual review pending
 
 ## Scope
 
@@ -70,3 +70,35 @@ cross-site mutations, one-time owner setup, and guest/host link separation.
 
 Database changes, deployed/browser checks, and any limitations are recorded
 below before marking this sprint complete.
+
+## Results — 2026-10-16
+
+- Managed Auth enabled on the existing database. Applied the additive staff
+  migration and the previously committed incident-report table migration.
+- Clean `npm ci`, TypeScript, production build, and lint for all API/auth/test
+  files pass. The repository-wide older UI/script lint failures remain separate.
+- `npm test`: 66 passing tests, including real SDK initialization. The first live
+  run caught the SDK rejecting a zero-second session cache; corrected it to the
+  supported one-second minimum and added a regression test.
+- Deployed HTTP checks: sign-in redirect and rendered form; signed-out events
+  API returns 401; synthetic signup succeeds; unverified account returns 403.
+- With a verified synthetic identity in a separate labelled QA tenant: staff
+  session succeeds; event list contains zero events from the original business;
+  Party Host cannot create bookings or collect payments (403); a foreign guest
+  is inaccessible (404); authenticated dashboard renders (200).
+- Owner-role HTTP checks: list own staff, approve another staff email (201),
+  deactivate it (200), reject owner self-demotion (403), reject cross-site
+  mutation (403), sign out (200), deny access afterward (401), sign in again,
+  and restore the session from saved cookies (200).
+- Synthetic QA staff are deactivated and unapproved after testing; their login
+  identity is banned. Only clearly labelled disposable test records were added.
+  The original business owner setup is still unclaimed.
+- Actual email code delivery / recovery and visual browser checks are pending.
+  The local browser binary could not be downloaded, and the cloud browser was
+  blocked by Vercel sign-in. Deployed HTTP tests used an authorized temporary
+  preview access link. Do not describe those as full browser end-to-end tests.
+- Vercel preview configuration is scoped to the Git branch only. Configure the
+  corresponding main-deployment environment before merging this branch.
+
+Preview branch: `release-foundation-private-host-access`.
+Main application deployment remains unchanged.

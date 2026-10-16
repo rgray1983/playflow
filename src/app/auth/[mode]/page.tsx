@@ -5,5 +5,5 @@ const modes = ["sign-in", "sign-up", "verify", "access", "setup", "recover", "un
 export default async function AuthPage({ params }: { params: Promise<{ mode: string }> }) {
   const { mode } = await params;
   if (!modes.includes(mode)) notFound();
-  return <AuthPanel mode={mode as AuthMode} />;
+  return <AuthPanel key={mode} mode={mode as AuthMode} />;
 }

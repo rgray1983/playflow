@@ -49,13 +49,32 @@ Typical variables include:
 
 ``` text
 DATABASE_URL=
-NEXTAUTH_SECRET=
-NEXTAUTH_URL=
-RESEND_API_KEY=
+NEON_AUTH_BASE_URL=
+NEON_AUTH_COOKIE_SECRET=
+PLAYFLOW_SETUP_TOKEN=
+PLAYFLOW_SETUP_TENANT_ID=
 NEXT_PUBLIC_APP_URL=
 ```
 
 Only `.env.example` should be committed.
+
+PlayFlow uses Neon Managed Auth. Generate independent random secrets of at
+least 32 characters for the cookie secret and first-owner setup token. Add
+the exact application origin to the Neon Auth trusted domains. The setup
+tenant ID must identify the business receiving its first owner. Do not put
+these secrets in NEXT_PUBLIC variables.
+
+Create and verify an account, then use `/auth/setup` with the private setup
+code. Owners approve staff emails in Company Settings → Staff Access. A new
+login identity has no access to business data until explicitly approved.
+
+The current original Neon branch is named `production`, but the owner has
+confirmed all current records are development/test data. Use that branch for
+routine development; a second database branch is not needed by default.
+
+See Sprint 006 for enforced roles and preview configuration. Email code
+delivery and password recovery must be exercised with the owner's own email
+before marking owner onboarding verified.
 
 ------------------------------------------------------------------------
 
