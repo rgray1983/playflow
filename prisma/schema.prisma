@@ -104,6 +104,7 @@ model Tenant {
   slug      String   @unique
   ownerAuthUserId String? @unique
   timezone  String   @default("America/New_York")
+  bookingSettings Json?
   phone     String?
   email     String?
   website   String?
@@ -449,6 +450,8 @@ model Party {
   id             String      @id @default(cuid())
   tenantId       String
   familyId       String?
+  bookingRequestId String?
+  pricingSnapshot Json?
   primaryParentId String?
   eventTypeId    String?
   packageId      String?
@@ -500,6 +503,7 @@ model Party {
   @@index([status])
   @@index([workflowStep])
   @@index([confirmationExpiresAt])
+  @@unique([tenantId, bookingRequestId])
 }
 
 model PartyGuest {
@@ -541,6 +545,7 @@ model PartyAddOn {
   name        String
   description String?
   price       Decimal  @db.Decimal(10, 2)
+  durationMinutes Int @default(0)
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

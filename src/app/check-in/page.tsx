@@ -1,5 +1,6 @@
 "use client";
 
+import StaffName from "@/components/StaffName";
 import Link from "next/link";
 import SignOutButton from "@/components/SignOutButton";
 import { useMemo, useState } from "react";
@@ -203,7 +204,7 @@ export default function CheckInPage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FFD56B] text-md font-semibold text-[#1E293B]">
                   D
                 </div>
-                <span className="text-sm font-medium text-[#1E293B]">Devin</span>
+                <span className="text-sm font-medium text-[#1E293B]"><StaffName /></span>
               </div>
             </div>
           </header>

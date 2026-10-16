@@ -13,6 +13,7 @@ import MembershipsSettings from "./components/MembershipsSettings";
 import ModulesSettings from "./components/ModulesSettings";
 import PackagesSettings from "./components/PackagesSettings";
 import StaffRolesSettings from "./components/StaffRolesSettings";
+import BookingScheduleSettings from "./components/BookingScheduleSettings";
 import StaffAccessSettings from "./components/StaffAccessSettings";
 import WaiverSettings from "./components/WaiverSettings";
 
@@ -24,6 +25,7 @@ const settingsTabs = [
   "Memberships",
   "Party & Event Types",
   "Packages",
+  "Booking Schedule",
   "Add-Ons",
   "Waivers",
   "Commerce",
@@ -55,6 +57,8 @@ function renderSettingsSection(activeTab: string) {
       return <MembershipsSettings />;
     case "Party & Event Types":
       return <EventTypesSettings />;
+    case "Booking Schedule":
+      return <BookingScheduleSettings />;
     case "Packages":
       return <PackagesSettings />;
     case "Add-Ons":

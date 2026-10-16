@@ -1,3 +1,5 @@
+import { lockReservation, assertReservation } from "@/lib/booking/service";
+import { BookingError } from "@/lib/booking/rules";
 import { withStaff, getStaffContext } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -28,6 +30,10 @@ async function handlePOST(_request: Request, { params }: Params) {
     }
 
     const updatedParty = await prisma.$transaction(async (tx) => {
+      const current = await lockReservation(tx, party.tenantId, party.id);
+      if (current.status === "CANCELLED") throw new BookingError("This party has been cancelled.");
+      if (current.status !== "PENDING") return current;
+      await assertReservation(tx, current);
       await tx.$executeRawUnsafe(
         'UPDATE "Party" SET status = $1::"PartyStatus", "workflowStep" = $2, "confirmedAt" = NOW(), "updatedAt" = NOW() WHERE id = $3',
         "CONFIRMED",
@@ -54,6 +60,7 @@ async function handlePOST(_request: Request, { params }: Params) {
 
     return NextResponse.json({ event: updatedParty });
   } catch (error) {
+    if (error instanceof BookingError) return NextResponse.json({ error: error.message }, { status: error.status });
     return jsonError(error, "Unable to confirm party.");
   }
 }

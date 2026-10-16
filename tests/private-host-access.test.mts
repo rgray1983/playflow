@@ -39,7 +39,10 @@ mock.module("../src/lib/prisma.ts", {
         },
       },
       $transaction: async (callback: (tx: object) => Promise<unknown>) => callback({
+        $queryRaw: async () => [],
+        tenant: { findUniqueOrThrow: async () => ({id: "test-tenant", timezone: "America/New_York"}) },
         party: {
+          findFirst: async () => null,
           create: async ({ data }: { data: typeof createdTokens }) => {
             createdTokens = data;
             return { id: "new-test-party" };
@@ -56,6 +59,10 @@ mock.module("../src/lib/prisma.ts", {
   },
 });
 
+mock.module("../src/lib/booking/service.ts", { namedExports: {
+  bookingOptions: async () => ({ pkg: { name: "Test package" }, addOns: [], quote: {depositDue: 100, balanceDue: 300}, slots: [{time: "12:00", available: true, eventDate: new Date("2026-11-01"), startTime: new Date("2026-11-01T17:00:00Z"), endTime: new Date("2026-11-01T19:00:00Z")}] }),
+  saveCustomer: async () => ({id: "parent", familyId: "family"}),
+} });
 mock.module("../src/lib/auth/staff.ts", {
   namedExports: {
     withStaff: (_permission: string, handler: unknown) => handler,
@@ -113,7 +120,7 @@ test("new bookings generate independent guest and host secrets", async () => {
     body: JSON.stringify({
       eventTypeId: "test-event-type", packageId: "test-package",
       parentFirstName: "Test", parentLastName: "Parent",
-      eventDate: "2026-11-01", startTime: "12:00 PM", balanceDue: 100,
+      eventDate: "2026-11-01", startTime: "12:00", balanceDue: 100, phone: "5555550100", bookingRequestId: "test-request-123456789",
     }),
   }));
   assert.equal(response.status, 200);

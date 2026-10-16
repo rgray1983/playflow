@@ -1,5 +1,6 @@
 "use client";
 
+import StaffName from "@/components/StaffName";
 import Link from "next/link";
 import SignOutButton from "@/components/SignOutButton";
 import { useEffect, useState } from "react";
@@ -170,7 +171,7 @@ export default function Home() {
                 {today || "Tuesday, June 16"}
               </p>
               <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">
-                {greeting}, Devin 👋
+                {greeting}, <StaffName first /> 👋
               </h1>
             </div>
 
@@ -242,7 +243,7 @@ export default function Home() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FFD56B] text-md font-semibold text-[#1E293B]">
                   D
                 </div>
-                <span className="text-sm font-medium text-[#1E293B]">Devin</span>
+                <span className="text-sm font-medium text-[#1E293B]"><StaffName /></span>
               </div>
             </div>
           </header>

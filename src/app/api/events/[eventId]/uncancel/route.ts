@@ -1,3 +1,5 @@
+import { lockReservation, assertReservation } from "@/lib/booking/service";
+import { BookingError } from "@/lib/booking/rules";
 import { withStaff, getStaffContext } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -20,6 +22,9 @@ async function handlePOST(_request: Request, { params }: Params) {
     const restoredStep = party.confirmedAt ? (party.workflowStep || "CONFIRMED") : "PENDING";
 
     const updatedParty = await prisma.$transaction(async (tx) => {
+      const current = await lockReservation(tx, party.tenantId, party.id);
+      if (current.status !== "CANCELLED") return current;
+      await assertReservation(tx, current);
       const event = await tx.party.update({
         where: { id: eventId, tenantId: getStaffContext().tenantId },
         data: { status: restoredStatus, workflowStep: restoredStep },
@@ -39,6 +44,7 @@ async function handlePOST(_request: Request, { params }: Params) {
 
     return NextResponse.json({ event: updatedParty });
   } catch (error) {
+    if (error instanceof BookingError) return NextResponse.json({ error: error.message }, { status: error.status });
     return jsonError(error, "Unable to restore party.");
   }
 }

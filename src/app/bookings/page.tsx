@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type EventTypeOption = {
   id: string;
@@ -14,6 +14,7 @@ type EventTypeOption = {
 type PackageOption = {
   id: string;
   name: string;
+  eventTypeId?: string | null;
   description: string;
   price: number;
   depositAmount: number;
@@ -33,91 +34,9 @@ type AddOnOption = {
 type BookingStep = "details" | "addons" | "date" | "customer" | "deposit";
 type DepositStatus = "pending" | "cash" | "card" | "waived";
 
-const fallbackEventTypes: EventTypeOption[] = [
-  { id: "birthday-party", name: "Birthday Party", description: "", color: "#FFB768", active: true },
-  { id: "private-event", name: "Private Event", description: "", color: "#3B82F6", active: true },
-  { id: "field-trip", name: "Field Trip", description: "", color: "#7BAE7F", active: true },
-];
-
-const fallbackPackages: PackageOption[] = [
-  {
-    id: "birthday-party-package",
-    name: "Birthday Party Package",
-    description: "Standard party package.",
-    price: 300,
-    depositAmount: 100,
-    guestLimit: 20,
-    durationMinutes: 120,
-    active: true,
-  },
-  {
-    id: "private-party-package",
-    name: "Private Party Package",
-    description: "Private room and extended party time.",
-    price: 375,
-    depositAmount: 100,
-    guestLimit: 25,
-    durationMinutes: 120,
-    active: true,
-  },
-];
-
-const fallbackAddOns: AddOnOption[] = [
-  { id: "balloon-arch", name: "Balloon Arch", description: "Decorative balloon arch.", price: 75, active: true },
-  { id: "balloon-columns", name: "Balloon Columns", description: "Pair of balloon columns.", price: 100, active: true },
-  { id: "extra-time", name: "Extra 30 Minutes", description: "Extend party time.", price: 50, active: true },
-  { id: "pizza", name: "Pizza Package", description: "Food add-on for guests.", price: 60, active: true },
-];
-
-const years = [2026, 2027, 2028];
-
-const monthsByYear: Record<number, string[]> = {
-  2026: ["July", "August", "September", "October", "November", "December"],
-  2027: ["January", "February", "March", "April", "May", "June"],
-  2028: ["January", "February", "March", "April", "May", "June"],
-};
-
-const daysByMonth: Record<string, { label: string; availability: "plenty" | "limited" | "booked"; slots: number }[]> = {
-  "July 2026": [
-    { label: "Sat Jul 11", availability: "plenty", slots: 4 },
-    { label: "Sun Jul 12", availability: "limited", slots: 2 },
-    { label: "Sat Jul 18", availability: "plenty", slots: 3 },
-    { label: "Sun Jul 19", availability: "booked", slots: 0 },
-    { label: "Sat Jul 25", availability: "limited", slots: 1 },
-    { label: "Sun Jul 26", availability: "plenty", slots: 4 },
-  ],
-  "August 2026": [
-    { label: "Sat Aug 1", availability: "plenty", slots: 4 },
-    { label: "Sun Aug 2", availability: "plenty", slots: 3 },
-    { label: "Sat Aug 8", availability: "limited", slots: 2 },
-    { label: "Sun Aug 9", availability: "booked", slots: 0 },
-    { label: "Sat Aug 15", availability: "plenty", slots: 4 },
-    { label: "Sun Aug 16", availability: "limited", slots: 1 },
-  ],
-  "September 2026": [
-    { label: "Sat Sep 5", availability: "plenty", slots: 4 },
-    { label: "Sun Sep 6", availability: "limited", slots: 2 },
-    { label: "Sat Sep 12", availability: "plenty", slots: 3 },
-    { label: "Sun Sep 13", availability: "plenty", slots: 4 },
-    { label: "Sat Sep 19", availability: "limited", slots: 1 },
-    { label: "Sun Sep 20", availability: "booked", slots: 0 },
-  ],
-  "October 2026": [
-    { label: "Sat Oct 3", availability: "plenty", slots: 4 },
-    { label: "Sun Oct 4", availability: "plenty", slots: 4 },
-    { label: "Sat Oct 10", availability: "limited", slots: 2 },
-    { label: "Sun Oct 11", availability: "plenty", slots: 3 },
-    { label: "Sat Oct 17", availability: "booked", slots: 0 },
-    { label: "Sun Oct 18", availability: "limited", slots: 1 },
-  ],
-};
-
-const timeSlots = [
-  { label: "9:00 AM - 11:00 AM", available: true },
-  { label: "12:00 PM - 2:00 PM", available: true },
-  { label: "3:00 PM - 5:00 PM", available: true },
-  { label: "6:00 PM - 8:00 PM", available: false },
-];
+const emptyEventType: EventTypeOption = { id: "", name: "Choose an event type", description: "", color: "#FFB768", active: false };
+const emptyPackage: PackageOption = { id: "", name: "Choose a package", description: "", price: 0, depositAmount: 0, guestLimit: null, durationMinutes: null, active: false };
+type Availability = { slots: { time: string; label: string; available: boolean }[]; timezone: string; quote: { total: number; depositDue: number; balanceDue: number; tax: number; fees: {name: string; amount: number}[] } };
 
 const navItems = [
   { label: "Dashboard", icon: "▣", href: "/" },
@@ -163,31 +82,23 @@ function getEventIcon(eventTypeName: string) {
 }
 
 function getDepositLabel(status: DepositStatus) {
-  if (status === "cash") return "Cash Deposit Collected";
-  if (status === "card") return "Card Deposit Collected";
+  if (status === "cash") return "Cash Preferred — Unpaid";
+  if (status === "card") return "Card Preferred — Unpaid";
   if (status === "waived") return "Deposit Waived";
   return "Deposit Pending";
 }
 
-function getAvailabilityStyles(availability: "plenty" | "limited" | "booked") {
-  if (availability === "plenty") return "bg-[#E9F8EC] text-[#245B35]";
-  if (availability === "limited") return "bg-[#FFF0C4] text-[#92400E]";
-  return "bg-[#FFE0E9] text-[#9F1239]";
-}
-
 export default function BookingsPage() {
-  const [eventTypes, setEventTypes] = useState<EventTypeOption[]>(fallbackEventTypes);
-  const [packages, setPackages] = useState<PackageOption[]>(fallbackPackages);
-  const [addOns, setAddOns] = useState<AddOnOption[]>(fallbackAddOns);
+  const [eventTypes, setEventTypes] = useState<EventTypeOption[]>([]);
+  const [packages, setPackages] = useState<PackageOption[]>([]);
+  const [addOns, setAddOns] = useState<AddOnOption[]>([]);
 
-  const [selectedEventTypeId, setSelectedEventTypeId] = useState(fallbackEventTypes[0].id);
-  const [selectedPackageId, setSelectedPackageId] = useState(fallbackPackages[0].id);
+  const [selectedEventTypeId, setSelectedEventTypeId] = useState("");
+  const [selectedPackageId, setSelectedPackageId] = useState("");
   const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>([]);
   const [step, setStep] = useState<BookingStep>("details");
 
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [selectedYear, setSelectedYear] = useState<number | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState("");
   const [selectedDay, setSelectedDay] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
 
@@ -201,6 +112,13 @@ export default function BookingsPage() {
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [depositStatus, setDepositStatus] = useState<DepositStatus>("pending");
   const [bookingComplete, setBookingComplete] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const requestId = useRef("");
+  const [error, setError] = useState("");
+  const [availability, setAvailability] = useState<Availability | null>(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [confirmationUrl, setConfirmationUrl] = useState("");
+
 
   useEffect(() => {
     async function loadSettings() {
@@ -211,6 +129,7 @@ export default function BookingsPage() {
           fetch("/api/add-ons"),
         ]);
 
+        if (![eventTypesResponse, packagesResponse, addOnsResponse].every(r => r.ok)) throw new Error("Unable to load booking settings.");
         const [eventTypesData, packagesData, addOnsData] = await Promise.all([
           eventTypesResponse.json(),
           packagesResponse.json(),
@@ -231,9 +150,7 @@ export default function BookingsPage() {
         }
         if (activeAddOns.length > 0) setAddOns(activeAddOns);
       } catch {
-        setEventTypes(fallbackEventTypes);
-        setPackages(fallbackPackages);
-        setAddOns(fallbackAddOns);
+        setError("Unable to load booking settings. Refresh to try again.");
       }
     }
 
@@ -241,22 +158,42 @@ export default function BookingsPage() {
   }, []);
 
   const selectedEventType =
-    eventTypes.find((eventType) => eventType.id === selectedEventTypeId) ?? eventTypes[0] ?? fallbackEventTypes[0];
+    eventTypes.find((eventType) => eventType.id === selectedEventTypeId) ?? eventTypes[0] ?? emptyEventType;
 
-  const selectedPackage =
-    packages.find((packageItem) => packageItem.id === selectedPackageId) ?? packages[0] ?? fallbackPackages[0];
+  const matchingPackages = packages.filter(p => !p.eventTypeId || p.eventTypeId === selectedEventTypeId);
+  const selectedPackage = matchingPackages.find(p => p.id === selectedPackageId) ?? matchingPackages[0] ?? emptyPackage;
+  useEffect(() => {
+    if (!selectedDay || !selectedPackage.id || !selectedEventTypeId) return;
+    const controller = new AbortController();
+    const query = new URLSearchParams({ date: selectedDay, eventTypeId: selectedEventTypeId, packageId: selectedPackage.id, waived: String(depositStatus === "waived") });
+    selectedAddOnIds.forEach(id => query.append("addOnId", id));
+    async function check() {
+      setAvailability(null); setAvailabilityLoading(true); setError("");
+      try {
+        const response = await fetch(`/api/bookings/availability?${query}`, { signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to check availability.");
+        setAvailability(data);
+        setSelectedTime(current => data.slots.some((s: {time: string; available: boolean}) => s.time === current && s.available) ? current : "");
+      } catch (error) {
+        if (!controller.signal.aborted) setError(error instanceof Error ? error.message : "Unable to check availability.");
+      } finally { if (!controller.signal.aborted) setAvailabilityLoading(false); }
+    }
+    check();
+    return () => controller.abort();
+  }, [selectedDay, selectedPackage.id, selectedEventTypeId, selectedAddOnIds, depositStatus]);
 
   const selectedAddOns = addOns.filter((addOn) => selectedAddOnIds.includes(addOn.id));
   const addOnsTotal = selectedAddOns.reduce((total, addOn) => total + addOn.price, 0);
-  const total = selectedPackage.price + addOnsTotal;
-  const depositDue = depositStatus === "waived" ? 0 : selectedPackage.depositAmount;
-  const balanceDue = Math.max(total - depositDue, 0);
+  const total = availability?.quote.total ?? selectedPackage.price + addOnsTotal;
+  const depositDue = availability?.quote.depositDue ?? (depositStatus === "waived" ? 0 : selectedPackage.depositAmount);
+  const balanceDue = total;
 
-  const selectedDateSummary = selectedDay && selectedTime ? `${selectedDay} • ${selectedTime}` : "Select Date";
+  const selectedDateSummary = selectedDay && selectedTime ? `${selectedDay} • ${availability?.slots.find(s => s.time === selectedTime)?.label ?? selectedTime}` : "Select Date";
   const customerName = `${parentFirstName} ${parentLastName}`.trim();
   const hasDateTime = Boolean(selectedDay && selectedTime);
   const hasCustomer = Boolean(parentFirstName.trim() && parentLastName.trim() && phone.trim());
-  const canCreateBooking = hasDateTime && hasCustomer && depositStatus !== "pending";
+  const canCreateBooking = hasDateTime && hasCustomer && !!availability && !availabilityLoading && !!selectedPackage.id && !saving;
   const completionPercent = step === "details" ? 20 : step === "addons" ? 40 : step === "date" ? 60 : step === "customer" ? 80 : 100;
 
   const stepSummary = {
@@ -276,8 +213,10 @@ export default function BookingsPage() {
   async function completeBooking() {
     if (!canCreateBooking) return;
 
-    const [startTime, endTime] = selectedTime.split(" - ");
-    const eventDate = selectedDay && selectedYear ? `${selectedDay} ${selectedYear}` : selectedDay;
+    if (!requestId.current) requestId.current = crypto.randomUUID();
+    const startTime = selectedTime;
+    const eventDate = selectedDay;
+    setSaving(true); setError("");
 
     try {
       const response = await fetch("/api/events", {
@@ -286,6 +225,7 @@ export default function BookingsPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          bookingRequestId: requestId.current,
           eventTypeId: selectedEventType.id,
           packageId: selectedPackage.id,
           packageName: selectedPackage.name,
@@ -294,7 +234,6 @@ export default function BookingsPage() {
             : `${customerName} ${selectedEventType.name}`,
           eventDate,
           startTime,
-          endTime,
           guestOfHonor: childName,
           parentFirstName,
           parentLastName,
@@ -314,11 +253,11 @@ export default function BookingsPage() {
       });
 
       const responseText = await response.text();
-      let data: { error?: string } = {};
+      let data: { error?: string; event?: { confirmationUrl?: string } } = {};
 
       if (responseText) {
         try {
-          data = JSON.parse(responseText) as { error?: string };
+          data = JSON.parse(responseText) as { error?: string; event?: { confirmationUrl?: string } };
         } catch {
           data = {
             error: responseText,
@@ -330,10 +269,11 @@ export default function BookingsPage() {
         throw new Error(data.error || "Unable to create booking.");
       }
 
+      setConfirmationUrl(data.event?.confirmationUrl ?? "");
       setBookingComplete(true);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Unable to create booking.");
-    }
+      setError(error instanceof Error ? error.message : "Unable to create booking.");
+    } finally { setSaving(false); }
   }
 
   function selectDeposit(status: DepositStatus) {
@@ -343,6 +283,8 @@ export default function BookingsPage() {
   }
 
   function createAnotherBooking() {
+    requestId.current = "";
+    setAvailability(null); setConfirmationUrl(""); setError("");
     setSelectedAddOnIds([]);
     setSelectedDay("");
     setSelectedTime("");
@@ -466,14 +408,14 @@ export default function BookingsPage() {
                       <label>
                         <span className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280]">Package</span>
                         <select value={selectedPackageId} onChange={(event) => setSelectedPackageId(event.target.value)} className="mt-2 w-full rounded-[10px] border border-black/10 bg-white px-4 py-3 text-sm font-semibold outline-none">
-                          {packages.map((packageItem) => <option key={packageItem.id} value={packageItem.id}>{packageItem.name}</option>)}
+                          {matchingPackages.map((packageItem) => <option key={packageItem.id} value={packageItem.id}>{packageItem.name}</option>)}
                         </select>
                       </label>
                     </div>
 
                     <div className="mt-4 grid grid-cols-4 gap-3">
                       <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Price</p><p className="mt-2 font-semibold text-[#1E293B]">{formatCurrency(selectedPackage.price)}</p></div>
-                      <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Deposit</p><p className="mt-2 font-semibold text-[#155E75]">{formatCurrency(selectedPackage.depositAmount)}</p></div>
+                      <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Deposit</p><p className="mt-2 font-semibold text-[#155E75]">{formatCurrency(depositDue)}</p></div>
                       <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Guests</p><p className="mt-2 font-semibold text-[#1E293B]">{selectedPackage.guestLimit ?? "No limit"}</p></div>
                       <div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Duration</p><p className="mt-2 font-semibold text-[#1E293B]">{formatDuration(selectedPackage.durationMinutes)}</p></div>
                     </div>
@@ -535,12 +477,12 @@ export default function BookingsPage() {
 
                 {step === "deposit" && (
                   <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
-                    <div className="mb-4"><p className="text-lg font-semibold text-[#1E293B]">Deposit Decision</p><p className="mt-1 text-sm text-[#6B7280]">Collect the deposit now or waive it before creating the booking.</p></div>
+                    <div className="mb-4"><p className="text-lg font-semibold text-[#1E293B]">Deposit Decision</p><p className="mt-1 text-sm text-[#6B7280]">Choose a preferred payment method, leave the deposit pending, or waive it. No payment is collected here.</p></div>
                     <div className="grid grid-cols-3 gap-3">
                       <button onClick={() => setDepositModalOpen(true)} className="rounded-[12px] border border-black/10 bg-white p-5 text-left transition hover:bg-[#EFE8DC]">
-                        <p className="text-lg font-semibold text-[#1E293B]">Collect Deposit</p>
+                        <p className="text-lg font-semibold text-[#1E293B]">Payment Preference</p>
                         <p className="mt-1 text-sm text-[#6B7280]">Cash or card</p>
-                        <p className="mt-4 text-xl font-semibold text-[#155E75]">{formatCurrency(selectedPackage.depositAmount)}</p>
+                        <p className="mt-4 text-xl font-semibold text-[#155E75]">{formatCurrency(depositDue)}</p>
                       </button>
                       <button onClick={() => selectDeposit("waived")} className={`rounded-[12px] border p-5 text-left transition ${depositStatus === "waived" ? "border-[#1E293B] bg-[#1E293B] text-white" : "border-black/10 bg-white text-[#1E293B] hover:bg-[#EFE8DC]"}`}>
                         <p className="text-lg font-semibold">Waive Deposit</p>
@@ -551,7 +493,7 @@ export default function BookingsPage() {
                         <p className="mt-2 text-lg font-semibold text-[#1E293B]">{getDepositLabel(depositStatus)}</p>
                       </div>
                     </div>
-                    <button onClick={completeBooking} disabled={!canCreateBooking} className="mt-4 w-full rounded-[10px] bg-[#7BAE7F] px-4 py-4 text-sm font-semibold text-white disabled:opacity-40">Create Booking & Send Confirmation</button>
+                    <button onClick={completeBooking} disabled={!canCreateBooking} className="mt-4 w-full rounded-[10px] bg-[#7BAE7F] px-4 py-4 text-sm font-semibold text-white disabled:opacity-40">Create Pending Booking</button>
                   </section>
                 )}
               </div>
@@ -571,6 +513,7 @@ export default function BookingsPage() {
                   <div className="flex justify-between"><span className="text-[#6B7280]">Package</span><span className="font-semibold text-[#1E293B]">{formatCurrency(selectedPackage.price)}</span></div>
                   {selectedAddOns.map((addOn) => <div key={addOn.id} className="flex justify-between"><span className="text-[#6B7280]">{addOn.name}</span><span className="font-semibold text-[#1E293B]">{formatCurrency(addOn.price)}</span></div>)}
                   <div className="border-t border-black/10 pt-2">
+                    {availability && <><div className="flex justify-between text-sm"><span>Tax {availability.quote.tax > 0 ? "(included in total)" : ""}</span><span>{formatCurrency(availability.quote.tax)}</span></div>{availability.quote.fees.map((fee, i) => <div key={i} className="flex justify-between text-sm"><span>{fee.name}</span><span>{formatCurrency(fee.amount)}</span></div>)}</>}
                     <div className="flex justify-between"><span className="font-semibold text-[#1E293B]">Total</span><span className="font-semibold text-[#1E293B]">{formatCurrency(total)}</span></div>
                     <div className="mt-2 flex justify-between"><span className="text-[#6B7280]">Deposit Due</span><span className="font-semibold text-[#155E75]">{formatCurrency(depositDue)}</span></div>
                     <div className="mt-2 flex justify-between"><span className="text-[#6B7280]">Remaining Balance</span><span className="font-semibold text-[#9F1239]">{formatCurrency(balanceDue)}</span></div>
@@ -594,12 +537,14 @@ export default function BookingsPage() {
 
               <section className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm">
                 <button onClick={() => setStep("deposit")} disabled={!hasDateTime || !hasCustomer} className="w-full rounded-[10px] bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white disabled:opacity-40">Go To Deposit</button>
-                <button onClick={completeBooking} disabled={!canCreateBooking} className="mt-2 w-full rounded-[10px] bg-[#7BAE7F] px-4 py-3 text-sm font-semibold text-white disabled:opacity-40">Create Booking & Send Confirmation</button>
+                <button onClick={completeBooking} disabled={!canCreateBooking} className="mt-2 w-full rounded-[10px] bg-[#7BAE7F] px-4 py-3 text-sm font-semibold text-white disabled:opacity-40">Create Pending Booking</button>
               </section>
             </aside>
           </div>
         </section>
       </div>
+
+      {error && <div role="alert" className="fixed bottom-5 left-1/2 z-50 max-w-xl -translate-x-1/2 rounded-xl border border-red-200 bg-white p-4 text-red-700 shadow-lg">{error}<button className="ml-4 underline" onClick={() => setError("")}>Dismiss</button></div>}
 
       {datePickerOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6">
@@ -607,63 +552,22 @@ export default function BookingsPage() {
             <div className="flex items-start justify-between border-b border-black/10 bg-white p-5">
               <div>
                 <p className="text-sm font-semibold text-[#8A6D3B]">Select Date</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-[#1E293B]">Choose Year, Month, Day, and Time</h2>
+                <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-[#1E293B]">Choose Date and Time</h2>
               </div>
               <button onClick={() => setDatePickerOpen(false)} className="rounded-[10px] bg-[#F6F0E6] px-4 py-3 text-sm font-semibold">Close</button>
             </div>
 
-            <div className="grid grid-cols-[150px_190px_1fr] gap-0">
-              <div className="border-r border-black/10 bg-white p-4">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280]">Years</p>
-                <div className="space-y-2">
-                  {years.map((year) => <button key={year} onClick={() => { setSelectedYear(year); setSelectedMonth(""); setSelectedDay(""); setSelectedTime(""); }} className={`w-full rounded-[10px] px-4 py-3 text-left text-sm font-semibold transition ${selectedYear === year ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#1E293B] hover:bg-[#EFE8DC]"}`}>{year}</button>)}
-                </div>
+            <div className="p-5">
+              <label className="block text-sm font-semibold">Booking date
+                <input aria-label="Booking date" type="date" value={selectedDay} onChange={e => { setSelectedDay(e.target.value); setSelectedTime(""); setAvailability(null); }} className="mt-2 block rounded-lg border border-black/20 bg-white p-3" />
+              </label>
+              <p className="mt-3 text-sm text-[#6B7280]">{availability ? `Times shown in ${availability.timezone}. The venue is reserved for the package duration.` : "Select a date to check current availability."}</p>
+              {availabilityLoading && <p role="status" className="mt-4">Checking availability…</p>}
+              {error && <p role="alert" className="mt-4 text-red-700">{error}</p>}
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                {availability?.slots.map(slot => <button key={slot.time} disabled={!slot.available} onClick={() => setSelectedTime(slot.time)} className={`rounded-xl border p-4 text-left disabled:opacity-40 ${selectedTime === slot.time ? "bg-[#1E293B] text-white" : "bg-white"}`}><p>{slot.label}</p><p className="text-xs">{slot.available ? "Available" : "Unavailable"}</p></button>)}
               </div>
-
-              <div className="border-r border-black/10 bg-white p-4">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280]">Months</p>
-                <div className="space-y-2">
-                  {selectedYear ? monthsByYear[selectedYear].map((month) => {
-                    const monthKey = `${month} ${selectedYear}`;
-                    return <button key={monthKey} onClick={() => { setSelectedMonth(monthKey); setSelectedDay(""); setSelectedTime(""); }} className={`w-full rounded-[10px] px-4 py-3 text-left text-sm font-semibold transition ${selectedMonth === monthKey ? "bg-[#1E293B] text-white" : "bg-[#F6F0E6] text-[#1E293B] hover:bg-[#EFE8DC]"}`}>{month}</button>;
-                  }) : <p className="rounded-[10px] bg-[#F6F0E6] p-4 text-sm text-[#6B7280]">Select a year.</p>}
-                </div>
-              </div>
-
-              <div className="max-h-[66vh] overflow-y-auto p-5">
-                {!selectedMonth ? (
-                  <div className="rounded-[12px] border border-dashed border-black/20 bg-white/70 p-8 text-center"><p className="font-semibold text-[#1E293B]">Select a month to see available days.</p></div>
-                ) : !selectedDay ? (
-                  <>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280]">Available Days</p>
-                    <div className="grid grid-cols-3 gap-3">
-                      {(daysByMonth[selectedMonth] ?? []).map((day) => (
-                        <button key={day.label} disabled={day.availability === "booked"} onClick={() => setSelectedDay(day.label)} className="rounded-[12px] border border-black/10 bg-white p-5 text-left transition hover:bg-[#EFE8DC] disabled:cursor-not-allowed disabled:opacity-45">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-lg font-semibold text-[#1E293B]">{day.label}</p>
-                            <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${getAvailabilityStyles(day.availability)}`}>{day.availability === "plenty" ? "Plenty" : day.availability === "limited" ? "Limited" : "Booked"}</span>
-                          </div>
-                          <p className="mt-2 text-xs text-[#6B7280]">{day.slots} slot{day.slots === 1 ? "" : "s"} open</p>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => { setSelectedDay(""); setSelectedTime(""); }} className="mb-4 rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-[#1E293B]">← Back to days</button>
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280]">Available Times for {selectedDay}</p>
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                      {timeSlots.map((slot) => (
-                        <button key={slot.label} disabled={!slot.available} onClick={() => setSelectedTime(slot.label)} className={`rounded-[12px] border p-5 text-left transition ${selectedTime === slot.label ? "border-[#1E293B] bg-[#1E293B] text-white" : "border-black/10 bg-white text-[#1E293B] hover:bg-[#EFE8DC]"} disabled:cursor-not-allowed disabled:bg-[#F1F1F1] disabled:text-[#9CA3AF]`}>
-                          <p className="text-lg font-semibold">{slot.label}</p>
-                          <p className={`mt-1 text-xs ${selectedTime === slot.label ? "text-white/70" : "text-[#6B7280]"}`}>{slot.available ? "Available" : "Booked"}</p>
-                        </button>
-                      ))}
-                    </div>
-                    <button onClick={() => { if (selectedDay && selectedTime) { setDatePickerOpen(false); setStep("customer"); } }} disabled={!selectedTime} className="mt-5 w-full rounded-[12px] bg-[#1E293B] px-4 py-4 text-sm font-semibold text-white disabled:opacity-40">Use This Date & Time</button>
-                  </>
-                )}
-              </div>
+              <button disabled={!selectedTime || availabilityLoading} onClick={() => { setDatePickerOpen(false); setStep("customer"); }} className="mt-5 w-full rounded-xl bg-[#1E293B] p-4 font-semibold text-white disabled:opacity-40">Use This Date & Time</button>
             </div>
           </div>
         </div>
@@ -674,9 +578,9 @@ export default function BookingsPage() {
           <div className="w-full max-w-[520px] rounded-[18px] bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-[#8A6D3B]">Collect Deposit</p>
+                <p className="text-sm font-semibold text-[#8A6D3B]">Payment Preference</p>
                 <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-[#1E293B]">Payment Method</h2>
-                <p className="mt-2 text-sm text-[#6B7280]">Deposit due: {formatCurrency(selectedPackage.depositAmount)}</p>
+                <p className="mt-2 text-sm text-[#6B7280]">Deposit due: {formatCurrency(depositDue)}</p>
               </div>
               <button onClick={() => setDepositModalOpen(false)} className="rounded-[10px] bg-[#F6F0E6] px-4 py-3 text-sm font-semibold">Close</button>
             </div>
@@ -693,7 +597,8 @@ export default function BookingsPage() {
           <div className="w-full max-w-[560px] rounded-[18px] bg-white p-6 text-center shadow-xl">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#E9F8EC] text-3xl">✓</div>
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">Booking Created!</h2>
-            <p className="mt-2 text-sm text-[#6B7280]">Confirmation sent, deposit recorded, and the booking is ready for Party & Event Manager.</p>
+            <p className="mt-2 text-sm text-[#6B7280]">Your pending booking and customer record are saved. Share the confirmation link below. No email was sent and no payment was collected.</p>
+            {confirmationUrl && <a href={confirmationUrl} target="_blank" rel="noreferrer" className="mt-4 block break-all text-sm underline">Open confirmation link</a>}
             <div className="mt-5 grid grid-cols-2 gap-3">
               <Link href="/parties" className="rounded-[10px] bg-[#1E293B] px-4 py-4 text-sm font-semibold text-white">View Booking</Link>
               <button onClick={createAnotherBooking} className="rounded-[10px] border border-black/10 bg-[#F6F0E6] px-4 py-4 text-sm font-semibold text-[#1E293B]">Create Another Booking</button>

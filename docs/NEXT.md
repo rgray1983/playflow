@@ -13,9 +13,6 @@ learn from real-world use.
 # 🔥 Highest Priority
 
 -   Complete owner onboarding: real email verification/recovery and visual review.
--   Save booking contacts as linked Family / Parent records.
--   Calculate prices, deposits, and balances on the server from saved settings.
--   Validate booking availability and business timezone on the server.
 -   Make payment recording safe against duplicate and simultaneous submissions.
 -   Connect RSVP waiver acceptance to full waiver / guardian / child records.
 
@@ -23,6 +20,9 @@ learn from real-world use.
 
 # 🟡 High Priority
 
+-   Add public customer booking flow for a Wix booking-page link.
+-   Inspect Wix CMS exports and implement a repeatable migration with source IDs.
+-   Add blackout dates, separate rooms if needed, and guarded rescheduling.
 -   Replace demo dashboard totals with live business data.
 -   Replace demo walk-in check-in with persistent families and visits.
 -   Complete general POS checkout (current Process Payment button is a mockup).

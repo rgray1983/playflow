@@ -1,10 +1,14 @@
 import { withStaff, getStaffTenant } from "@/lib/auth/staff";
+import { bookingOptions, saveCustomer } from "@/lib/booking/service";
+import { BookingError, normalizePhone } from "@/lib/booking/rules";
+import { createHash, randomUUID } from "crypto";
 import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 
 type CreateEventPayload = {
+  bookingRequestId?: string;
   eventTypeId?: string;
   packageId?: string;
   packageName?: string;
@@ -36,29 +40,6 @@ function isMissingIncidentTableError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const message = error instanceof Error ? error.message : JSON.stringify(error);
   return message.includes("EventIncidentReport") && (message.includes("does not exist") || message.includes("TableDoesNotExist"));
-}
-
-function toDecimal(value: unknown) {
-  if (value === null || value === undefined || value === "") return new Prisma.Decimal(0);
-  const parsed = Number(value);
-  return new Prisma.Decimal(Number.isFinite(parsed) ? parsed : 0);
-}
-
-function parseEventDate(value: string | undefined) {
-  if (!value) return new Date();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-}
-
-function combineDateAndTime(dateValue: string | undefined, timeValue: string | undefined) {
-  const date = parseEventDate(dateValue);
-  const cleanTime = timeValue?.trim() || "12:00 PM";
-  const parsed = new Date(`${date.toDateString()} ${cleanTime}`);
-  return Number.isNaN(parsed.getTime()) ? date : parsed;
-}
-
-function addDuration(startTime: Date, minutes = 120) {
-  return new Date(startTime.getTime() + minutes * 60 * 1000);
 }
 
 function toPaymentMethod(value: CreateEventPayload["depositStatus"]) {
@@ -124,6 +105,9 @@ function normalizePublicUrl(url: string | null | undefined, publicOrigin: string
 
 function serializeParty(party: {
   id: string;
+  familyId?: string | null;
+  primaryParentId?: string | null;
+  pricingSnapshot?: unknown;
   eventNumber: string | null;
   title: string;
   eventDate: Date;
@@ -169,6 +153,9 @@ function serializeParty(party: {
 
   return {
     id: party.id,
+    familyId: party.familyId ?? null,
+    primaryParentId: party.primaryParentId ?? null,
+    pricing: party.pricingSnapshot ?? null,
     eventNumber: party.eventNumber,
     title: party.title,
     eventDate: party.eventDate,
@@ -228,11 +215,6 @@ function createUrl(publicOrigin: string, path: string, token: string) {
   return `${publicOrigin.replace(/\/$/, "")}/${path}/${token}`;
 }
 
-async function nextEventNumber(tenantId: string) {
-  const count = await prisma.party.count({ where: { tenantId } });
-  return `EVT-${String(count + 1).padStart(6, "0")}`;
-}
-
 async function handleGET(request: Request) {
   try {
     const tenant = await getTenant();
@@ -268,7 +250,11 @@ async function handlePOST(request: Request) {
 
     let body: CreateEventPayload;
     try {
-      body = (await request.json()) as CreateEventPayload;
+      const input = await request.json();
+      if (!input || typeof input !== "object" || Array.isArray(input)) throw new BookingError("Invalid event request body.");
+      for (const key of ["eventTypeId", "packageId", "bookingRequestId", "title", "eventDate", "startTime", "guestOfHonor", "parentFirstName", "parentLastName", "email", "phone", "notes", "depositStatus"]) if (input[key] !== undefined && typeof input[key] !== "string") throw new BookingError("Invalid booking field.");
+      if ((input.notes?.length ?? 0) > 10000 || (input.title?.length ?? 0) > 200 || (input.guestOfHonor?.length ?? 0) > 200) throw new BookingError("Booking text is too long.");
+      body = input as CreateEventPayload;
     } catch (error) {
       return jsonError(error, "Invalid event request body.", 400);
     }
@@ -276,25 +262,18 @@ async function handlePOST(request: Request) {
     if (!body.eventTypeId) return NextResponse.json({ error: "Event type is required." }, { status: 400 });
     if (!body.packageId) return NextResponse.json({ error: "Package is required." }, { status: 400 });
 
-    const [eventType, selectedPackage, allowedAddOns] = await Promise.all([
-      prisma.eventType.findFirst({ where: { id: body.eventTypeId, tenantId: tenant.id, active: true } }),
-      prisma.package.findFirst({ where: { id: body.packageId, tenantId: tenant.id, active: true } }),
-      prisma.partyAddOn.findMany({ where: { id: { in: (body.addOns ?? []).map((item) => item.id) }, tenantId: tenant.id, active: true } }),
-    ]);
-    if (!eventType || !selectedPackage || (selectedPackage.eventTypeId && selectedPackage.eventTypeId !== eventType.id) || (body.addOns ?? []).some((item) => !allowedAddOns.some((allowed) => allowed.id === item.id))) {
-      return NextResponse.json({ error: "Choose an active event type, package, and add-ons from this business." }, { status: 400 });
-    }
-
     const parentFirstName = body.parentFirstName?.trim() || "";
     const parentLastName = body.parentLastName?.trim() || "";
-    const customerName = `${parentFirstName} ${parentLastName}`.trim();
-    if (!customerName) return NextResponse.json({ error: "Customer name is required." }, { status: 400 });
-
+    const email = body.email?.trim().toLowerCase() || "";
+    const phone = body.phone?.trim() || "";
+    if (!parentFirstName || !parentLastName || parentFirstName.length > 100 || parentLastName.length > 100 || !/^[0-9]{7,15}$/.test(normalizePhone(phone)) || (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254))) throw new BookingError("Enter the customer's first name, last name, valid phone, and valid email if provided.");
+    if (!body.bookingRequestId || !/^[a-zA-Z0-9-]{16,100}$/.test(body.bookingRequestId)) throw new BookingError("A booking request ID is required. Refresh the booking form and try again.");
+    if (body.depositStatus && !["pending", "cash", "card", "waived"].includes(body.depositStatus)) throw new BookingError("Choose a valid deposit preference.");
+    if (!Array.isArray(body.addOns ?? []) || (body.addOns ?? []).some(a => typeof a?.id !== "string")) throw new BookingError("Invalid add-ons.");
+    const customerName = `${parentFirstName} ${parentLastName}`;
     const publicOrigin = getRequestOrigin(request);
-    const eventDate = parseEventDate(body.eventDate);
-    const startTime = combineDateAndTime(body.eventDate, body.startTime);
-    const endTime = body.endTime ? combineDateAndTime(body.eventDate, body.endTime) : addDuration(startTime);
-    const eventNumber = await nextEventNumber(tenant.id);
+    const requestFingerprint = createHash("sha256").update(JSON.stringify({ eventTypeId: body.eventTypeId, packageId: body.packageId, eventDate: body.eventDate, startTime: body.startTime, parentFirstName, parentLastName, email, phone, guestOfHonor: body.guestOfHonor, notes: body.notes, title: body.title, depositStatus: body.depositStatus, addOns: (body.addOns ?? []).map(a => a.id).sort() })).digest("hex");
+    const eventNumber = `EVT-${randomUUID().toUpperCase()}`;
     const inviteToken = createToken();
     const hostToken = createToken();
     const inviteUrl = createUrl(publicOrigin, "rsvp", inviteToken);
@@ -302,14 +281,27 @@ async function handlePOST(request: Request) {
     const confirmationUrl = createUrl(publicOrigin, "confirm-party", confirmationToken);
     const confirmationExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
     const depositMethod = toPaymentMethod(body.depositStatus);
-    const depositAmount = body.depositStatus === "waived" ? new Prisma.Decimal(0) : toDecimal(body.depositAmount);
-    const balanceDue = toDecimal(body.balanceDue);
-
     const event = await prisma.$transaction(async (tx) => {
+      // Serialize venue reservations and customer matching for this business.
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id = ${tenant.id} FOR UPDATE`);
+      const existing = await tx.party.findFirst({ where: { tenantId: tenant.id, bookingRequestId: body.bookingRequestId }, include: { guests: true, timelineItems: true, payments: true } });
+      if (existing) {
+        if ((existing.pricingSnapshot as { requestFingerprint?: string } | null)?.requestFingerprint !== requestFingerprint) throw new BookingError("This booking was already saved. Start a new booking before changing the details.", 409);
+        return existing;
+      }
+      const currentTenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenant.id } });
+      const options = await bookingOptions(tx, currentTenant, { eventTypeId: body.eventTypeId!, packageId: body.packageId!, addOnIds: (body.addOns ?? []).map(a => a.id), eventDate: body.eventDate ?? "", waived: body.depositStatus === "waived" });
+      const slot = options.slots.find(s => s.time === body.startTime);
+      if (!slot?.available) throw new BookingError("That time is no longer available. Choose another time.", 409);
+      const parent = await saveCustomer(tx, tenant.id, { firstName: parentFirstName, lastName: parentLastName, email, phone });
       const party = await tx.party.create({
         data: {
           tenantId: tenant.id,
           eventNumber,
+          bookingRequestId: body.bookingRequestId,
+          pricingSnapshot: { requestFingerprint, ...options.quote, customer: { firstName: parentFirstName, lastName: parentLastName, email, phone }, timezone: tenant.timezone },
+          familyId: parent.familyId,
+          primaryParentId: parent.id,
           inviteToken,
           hostToken,
           inviteUrl,
@@ -319,30 +311,30 @@ async function handlePOST(request: Request) {
           eventTypeId: body.eventTypeId,
           packageId: body.packageId,
           title: body.title?.trim() || `${body.guestOfHonor || customerName} Booking`,
-          eventDate,
-          startTime,
-          endTime,
+          eventDate: slot.eventDate,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
           status: "PENDING",
           workflowStep: "PENDING",
-          packageName: body.packageName?.trim() || null,
+          packageName: options.pkg.name,
           guestOfHonor: body.guestOfHonor?.trim() || null,
-          depositAmount,
-          depositStatus: "PENDING",
+          depositAmount: new Prisma.Decimal(options.quote.depositDue),
+          depositStatus: body.depositStatus === "waived" ? "WAIVED" : "PENDING",
           depositMethod,
-          balanceDue,
+          balanceDue: new Prisma.Decimal(options.quote.balanceDue),
           notes: body.notes?.trim() || null,
         },
       });
 
-      for (const addOn of body.addOns ?? []) {
+      for (const addOn of options.addOns) {
         await tx.partyAddOnItem.create({
           data: {
             tenantId: tenant.id,
             partyId: party.id,
             partyAddOnId: addOn.id,
             quantity: 1,
-            unitPrice: toDecimal(addOn.price),
-            totalPrice: toDecimal(addOn.price),
+            unitPrice: new Prisma.Decimal(addOn.price),
+            totalPrice: new Prisma.Decimal(addOn.price),
           },
         });
       }
@@ -352,7 +344,7 @@ async function handlePOST(request: Request) {
           { tenantId: tenant.id, partyId: party.id, icon: "…", title: "Pending Hold Created", body: `${customerName} created ${eventNumber}. Hold expires in 48 hours unless confirmed.` },
           { tenantId: tenant.id, partyId: party.id, icon: "✉", title: "Confirmation Link Created", body: body.email ? `Confirmation should be sent to ${body.email}: ${confirmationUrl}` : `No email address was entered. Confirmation link: ${confirmationUrl}` },
           { tenantId: tenant.id, partyId: party.id, icon: "🔗", title: "RSVP Link Generated", body: `Guest RSVP and waiver link created: ${inviteUrl}` },
-          { tenantId: tenant.id, partyId: party.id, icon: "$", title: "Deposit Authorized Only", body: body.depositStatus === "waived" ? "Deposit was waived by staff." : "Deposit/card info may be saved, but the deposit should not be processed until confirmation." },
+          { tenantId: tenant.id, partyId: party.id, icon: "$", title: "Deposit Preference Saved", body: body.depositStatus === "waived" ? "Deposit was waived by staff." : "No payment has been collected or authorized. Record payment separately when received." },
         ],
       });
 
@@ -364,10 +356,11 @@ async function handlePOST(request: Request) {
           payments: { orderBy: { collectedAt: "desc" } },
         },
       });
-    });
+    }, { maxWait: 10000, timeout: 15000 });
 
     return NextResponse.json({ event: serializeParty({ ...event, incidentCount: 0 }, publicOrigin) });
   } catch (error) {
+    if (error instanceof BookingError) return NextResponse.json({ error: error.message }, { status: error.status });
     return jsonError(error, "Unable to create event.");
   }
 }

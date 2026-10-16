@@ -27,6 +27,7 @@ function toNullableInt(value: unknown) {
 
 function serializePackage(packageItem: {
   id: string;
+  eventTypeId: string | null;
   name: string;
   description: string | null;
   price: unknown;
@@ -39,6 +40,7 @@ function serializePackage(packageItem: {
 }) {
   return {
     id: packageItem.id,
+    eventTypeId: packageItem.eventTypeId,
     name: packageItem.name,
     description: packageItem.description ?? "",
     price: Number(packageItem.price ?? 0),
