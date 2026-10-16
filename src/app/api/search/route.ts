@@ -1,3 +1,4 @@
+import { withStaff, getStaffTenant } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -30,15 +31,11 @@ function formatDate(value: Date) {
   }).format(value);
 }
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim() ?? "";
 
-  const tenant = await prisma.tenant.findUnique({
-    where: {
-      slug: "palmetto-playhouse",
-    },
-  });
+  const tenant = await getStaffTenant();
 
   if (!tenant) {
     return NextResponse.json({ results: [] });
@@ -260,3 +257,5 @@ export async function GET(request: Request) {
     results,
   });
 }
+
+export const GET = withStaff("read", handleGET);

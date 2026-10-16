@@ -1,3 +1,4 @@
+import { withStaff, getStaffContext } from "@/lib/auth/staff";
 import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -61,10 +62,10 @@ function normalizeIncident(row: {
   };
 }
 
-export async function GET(_request: Request, { params }: Params) {
+async function handleGET(_request: Request, { params }: Params) {
   try {
     const { eventId } = await params;
-    const party = await prisma.party.findUnique({ where: { id: eventId } });
+    const party = await prisma.party.findUnique({ where: { id: eventId, tenantId: getStaffContext().tenantId } });
 
     if (!party) {
       return NextResponse.json({ error: "Party or event was not found." }, { status: 404 });
@@ -101,11 +102,11 @@ export async function GET(_request: Request, { params }: Params) {
   }
 }
 
-export async function POST(request: Request, { params }: Params) {
+async function handlePOST(request: Request, { params }: Params) {
   try {
     const { eventId } = await params;
     const body = (await request.json().catch(() => ({}))) as CreateIncidentPayload;
-    const party = await prisma.party.findUnique({ where: { id: eventId } });
+    const party = await prisma.party.findUnique({ where: { id: eventId, tenantId: getStaffContext().tenantId } });
 
     if (!party) {
       return NextResponse.json({ error: "Party or event was not found." }, { status: 404 });
@@ -198,3 +199,7 @@ export async function POST(request: Request, { params }: Params) {
     return jsonError(error, "Unable to create incident report.");
   }
 }
+
+export const GET = withStaff("read", handleGET);
+
+export const POST = withStaff("incidents.write", handlePOST);

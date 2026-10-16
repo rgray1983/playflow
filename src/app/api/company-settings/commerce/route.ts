@@ -1,24 +1,9 @@
+import { withStaff, getStaffTenant } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { defaultCommerceSettings, normalizeCommerceSettings } from "@/lib/commerce-settings";
 import { prisma } from "@/lib/prisma";
 
-async function getTenant() {
-  const palmettoTenant = await prisma.tenant.findUnique({
-    where: {
-      slug: "palmetto-playhouse",
-    },
-  });
-
-  if (palmettoTenant) {
-    return palmettoTenant;
-  }
-
-  return prisma.tenant.findFirst({
-    orderBy: {
-      createdAt: "asc",
-    },
-  });
-}
+async function getTenant() { return getStaffTenant(); }
 
 function serializeCommerceSettings(settings: Awaited<ReturnType<typeof prisma.commerceSettings.findUnique>>) {
   if (!settings) {
@@ -39,7 +24,7 @@ function serializeCommerceSettings(settings: Awaited<ReturnType<typeof prisma.co
   });
 }
 
-export async function GET() {
+async function handleGET() {
   const tenant = await getTenant();
 
   if (!tenant) {
@@ -57,7 +42,7 @@ export async function GET() {
   });
 }
 
-export async function PUT(request: Request) {
+async function handlePUT(request: Request) {
   const tenant = await getTenant();
 
   if (!tenant) {
@@ -109,3 +94,7 @@ export async function PUT(request: Request) {
     );
   }
 }
+
+export const GET = withStaff("read", handleGET);
+
+export const PUT = withStaff("settings.write", handlePUT);

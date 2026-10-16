@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import SignOutButton from "@/components/SignOutButton";
 import { useState } from "react";
 import AddOnsSettings from "./components/AddOnsSettings";
 import AdmissionsSettings from "./components/AdmissionsSettings";
@@ -12,6 +13,7 @@ import MembershipsSettings from "./components/MembershipsSettings";
 import ModulesSettings from "./components/ModulesSettings";
 import PackagesSettings from "./components/PackagesSettings";
 import StaffRolesSettings from "./components/StaffRolesSettings";
+import StaffAccessSettings from "./components/StaffAccessSettings";
 import WaiverSettings from "./components/WaiverSettings";
 
 const settingsTabs = [
@@ -26,6 +28,7 @@ const settingsTabs = [
   "Waivers",
   "Commerce",
   "Staff Roles",
+  "Staff Access",
 ];
 
 const navItems = [
@@ -62,6 +65,8 @@ function renderSettingsSection(activeTab: string) {
       return <CommerceSettings />;
     case "Staff Roles":
       return <StaffRolesSettings />;
+    case "Staff Access":
+      return <StaffAccessSettings />;
     default:
       return <BusinessProfileSettings />;
   }
@@ -112,10 +117,7 @@ export default function CompanySettingsPage() {
           </nav>
 
           <div className="absolute bottom-7 left-6 right-6">
-            <button className="flex w-full items-center gap-4 rounded-[8px] px-4 py-3 text-sm font-medium text-[#5B6270] hover:bg-white/70 hover:text-[#111827]">
-              <span>↪</span>
-              <span>Log Out</span>
-            </button>
+            <SignOutButton />
           </div>
         </aside>
 

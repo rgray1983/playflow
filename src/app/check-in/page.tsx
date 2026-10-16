@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import SignOutButton from "@/components/SignOutButton";
 import { useMemo, useState } from "react";
 
 const families = [
@@ -176,10 +177,7 @@ export default function CheckInPage() {
           </nav>
 
           <div className="absolute bottom-7 left-6 right-6">
-            <button className="flex w-full items-center gap-4 rounded-[8px] px-4 py-3 text-sm font-medium text-[#5B6270] hover:bg-white/70 hover:text-[#111827]">
-              <span>↪</span>
-              <span>Log Out</span>
-            </button>
+            <SignOutButton />
           </div>
         </aside>
 

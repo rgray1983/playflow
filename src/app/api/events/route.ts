@@ -1,3 +1,4 @@
+import { withStaff, getStaffTenant } from "@/lib/auth/staff";
 import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -24,11 +25,7 @@ type CreateEventPayload = {
   addOns?: { id: string; name: string; price: number }[];
 };
 
-async function getTenant() {
-  const palmettoTenant = await prisma.tenant.findUnique({ where: { slug: "palmetto-playhouse" } });
-  if (palmettoTenant) return palmettoTenant;
-  return prisma.tenant.findFirst({ orderBy: { createdAt: "asc" } });
-}
+async function getTenant() { return getStaffTenant(); }
 
 function jsonError(error: unknown, fallbackMessage: string, status = 500) {
   console.error(fallbackMessage, error);
@@ -236,7 +233,7 @@ async function nextEventNumber(tenantId: string) {
   return `EVT-${String(count + 1).padStart(6, "0")}`;
 }
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   try {
     const tenant = await getTenant();
     if (!tenant) return NextResponse.json({ events: [] });
@@ -264,7 +261,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   try {
     const tenant = await getTenant();
     if (!tenant) return NextResponse.json({ error: "No tenant found. Create a tenant before adding events." }, { status: 400 });
@@ -278,6 +275,15 @@ export async function POST(request: Request) {
 
     if (!body.eventTypeId) return NextResponse.json({ error: "Event type is required." }, { status: 400 });
     if (!body.packageId) return NextResponse.json({ error: "Package is required." }, { status: 400 });
+
+    const [eventType, selectedPackage, allowedAddOns] = await Promise.all([
+      prisma.eventType.findFirst({ where: { id: body.eventTypeId, tenantId: tenant.id, active: true } }),
+      prisma.package.findFirst({ where: { id: body.packageId, tenantId: tenant.id, active: true } }),
+      prisma.partyAddOn.findMany({ where: { id: { in: (body.addOns ?? []).map((item) => item.id) }, tenantId: tenant.id, active: true } }),
+    ]);
+    if (!eventType || !selectedPackage || (selectedPackage.eventTypeId && selectedPackage.eventTypeId !== eventType.id) || (body.addOns ?? []).some((item) => !allowedAddOns.some((allowed) => allowed.id === item.id))) {
+      return NextResponse.json({ error: "Choose an active event type, package, and add-ons from this business." }, { status: 400 });
+    }
 
     const parentFirstName = body.parentFirstName?.trim() || "";
     const parentLastName = body.parentLastName?.trim() || "";
@@ -365,3 +371,7 @@ export async function POST(request: Request) {
     return jsonError(error, "Unable to create event.");
   }
 }
+
+export const GET = withStaff("read", handleGET);
+
+export const POST = withStaff("parties.write", handlePOST);

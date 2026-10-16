@@ -1,3 +1,4 @@
+import { withStaff, getStaffContext, getStaffTenant } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -10,23 +11,7 @@ type AdmissionPayload = {
   active?: boolean;
 };
 
-async function getTenant() {
-  const palmettoTenant = await prisma.tenant.findUnique({
-    where: {
-      slug: "palmetto-playhouse",
-    },
-  });
-
-  if (palmettoTenant) {
-    return palmettoTenant;
-  }
-
-  return prisma.tenant.findFirst({
-    orderBy: {
-      createdAt: "asc",
-    },
-  });
-}
+async function getTenant() { return getStaffTenant(); }
 
 function serializeAdmission(admission: {
   id: string;
@@ -50,7 +35,7 @@ function serializeAdmission(admission: {
   };
 }
 
-export async function GET() {
+async function handleGET() {
   const tenant = await getTenant();
 
   if (!tenant) {
@@ -76,7 +61,7 @@ export async function GET() {
   });
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const tenant = await getTenant();
 
   if (!tenant) {
@@ -114,7 +99,7 @@ export async function POST(request: Request) {
   });
 }
 
-export async function PUT(request: Request) {
+async function handlePUT(request: Request) {
   const body = (await request.json()) as AdmissionPayload;
   const id = body.id?.trim();
 
@@ -135,9 +120,7 @@ export async function PUT(request: Request) {
   }
 
   const admission = await prisma.admissionType.update({
-    where: {
-      id,
-    },
+    where: { id, tenantId: getStaffContext().tenantId },
     data: {
       name,
       description: body.description?.trim() || null,
@@ -154,7 +137,7 @@ export async function PUT(request: Request) {
   });
 }
 
-export async function DELETE(request: Request) {
+async function handleDELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id")?.trim();
 
@@ -166,12 +149,18 @@ export async function DELETE(request: Request) {
   }
 
   await prisma.admissionType.delete({
-    where: {
-      id,
-    },
+    where: { id, tenantId: getStaffContext().tenantId },
   });
 
   return NextResponse.json({
     ok: true,
   });
 }
+
+export const GET = withStaff("read", handleGET);
+
+export const POST = withStaff("settings.write", handlePOST);
+
+export const PUT = withStaff("settings.write", handlePUT);
+
+export const DELETE = withStaff("settings.write", handleDELETE);

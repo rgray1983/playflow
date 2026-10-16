@@ -2,6 +2,11 @@
 
 Status: Implemented; production rollout pending staff authentication
 
+Update: the user confirmed all data is development data. The host migration was
+then applied to the original Neon branch and the extra development branch was
+deleted. Vercel access has since been restored. Routine work uses the original
+database; application changes remain on a GitHub preview branch until reviewed.
+
 Guest invitations must not authorize access to the host RSVP dashboard.
 Preserve the current UI and all existing guest invitation URLs.
 

@@ -65,7 +65,11 @@ export async function POST(_request: Request, { params }: Params) {
       return tx.party.findUnique({ where: { id: party.id } });
     });
 
-    return NextResponse.json({ party: updatedParty });
+    return NextResponse.json({ party: updatedParty ? {
+      id: updatedParty.id, title: updatedParty.title, eventNumber: updatedParty.eventNumber,
+      eventDate: updatedParty.eventDate, startTime: updatedParty.startTime,
+      endTime: updatedParty.endTime, status: updatedParty.status,
+    } : null });
   } catch (error) {
     return jsonError(error, "Unable to confirm party.");
   }

@@ -1,3 +1,4 @@
+import { withStaff, getStaffTenant } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -14,11 +15,7 @@ type BusinessProfilePayload = {
   timezone?: string | null;
 };
 
-async function getTenant() {
-  const palmettoTenant = await prisma.tenant.findUnique({ where: { slug: "palmetto-playhouse" } });
-  if (palmettoTenant) return palmettoTenant;
-  return prisma.tenant.findFirst({ orderBy: { createdAt: "asc" } });
-}
+async function getTenant() { return getStaffTenant(); }
 
 function serializeTenant(tenant: Awaited<ReturnType<typeof getTenant>>) {
   if (!tenant) return null;
@@ -39,12 +36,12 @@ function serializeTenant(tenant: Awaited<ReturnType<typeof getTenant>>) {
   };
 }
 
-export async function GET() {
+async function handleGET() {
   const tenant = await getTenant();
   return NextResponse.json({ businessProfile: serializeTenant(tenant) });
 }
 
-export async function PUT(request: Request) {
+async function handlePUT(request: Request) {
   const tenant = await getTenant();
 
   if (!tenant) {
@@ -76,3 +73,7 @@ export async function PUT(request: Request) {
 
   return NextResponse.json({ businessProfile: serializeTenant(updatedTenant) });
 }
+
+export const GET = withStaff("read", handleGET);
+
+export const PUT = withStaff("settings.write", handlePUT);

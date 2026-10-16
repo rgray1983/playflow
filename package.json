@@ -7,9 +7,11 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "test:host-access": "node --import tsx --experimental-test-module-mocks --test tests/private-host-access.test.mts"
+    "test:host-access": "node --import tsx --experimental-test-module-mocks --test tests/private-host-access.test.mts",
+    "test": "node --import tsx --experimental-test-module-mocks --test tests/*.test.mts"
   },
   "dependencies": {
+    "@neondatabase/auth": "0.6.0-beta",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "next": "16.2.9",

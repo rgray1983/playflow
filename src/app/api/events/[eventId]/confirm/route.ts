@@ -1,3 +1,4 @@
+import { withStaff, getStaffContext } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -13,10 +14,10 @@ function jsonError(error: unknown, fallbackMessage: string, status = 500) {
   );
 }
 
-export async function POST(_request: Request, { params }: Params) {
+async function handlePOST(_request: Request, { params }: Params) {
   try {
     const { eventId } = await params;
-    const party = await prisma.party.findUnique({ where: { id: eventId } });
+    const party = await prisma.party.findUnique({ where: { id: eventId, tenantId: getStaffContext().tenantId } });
 
     if (!party) {
       return NextResponse.json({ error: "Party or event was not found." }, { status: 404 });
@@ -48,7 +49,7 @@ export async function POST(_request: Request, { params }: Params) {
         },
       });
 
-      return tx.party.findUnique({ where: { id: eventId } });
+      return tx.party.findUnique({ where: { id: eventId, tenantId: getStaffContext().tenantId } });
     });
 
     return NextResponse.json({ event: updatedParty });
@@ -56,3 +57,5 @@ export async function POST(_request: Request, { params }: Params) {
     return jsonError(error, "Unable to confirm party.");
   }
 }
+
+export const POST = withStaff("parties.write", handlePOST);

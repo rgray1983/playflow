@@ -1,3 +1,4 @@
+import { withStaff, getStaffContext } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -19,7 +20,7 @@ function jsonError(error: unknown, fallbackMessage: string, status = 500) {
   );
 }
 
-export async function POST(_request: Request, { params }: Params) {
+async function handlePOST(_request: Request, { params }: Params) {
   try {
     const { eventId, guestId } = await params;
 
@@ -27,6 +28,7 @@ export async function POST(_request: Request, { params }: Params) {
       where: {
         id: guestId,
         partyId: eventId,
+        tenantId: getStaffContext().tenantId,
       },
       include: {
         party: true,
@@ -43,9 +45,7 @@ export async function POST(_request: Request, { params }: Params) {
 
     const updatedGuest = await prisma.$transaction(async (tx) => {
       const savedGuest = await tx.partyGuest.update({
-        where: {
-          id: guestId,
-        },
+        where: { id: guestId, tenantId: getStaffContext().tenantId },
         data: {
           status: "CHECKED_OUT",
           checkedOutAt: new Date(),
@@ -75,3 +75,5 @@ export async function POST(_request: Request, { params }: Params) {
     return jsonError(error, "Unable to update guest.");
   }
 }
+
+export const POST = withStaff("guests.write", handlePOST);

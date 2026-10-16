@@ -28,6 +28,9 @@ mock.module("../src/lib/prisma.ts", {
   namedExports: {
     prisma: {
       tenant: { findUnique: async () => ({ id: "test-tenant" }) },
+      eventType: { findFirst: async () => ({ id: "test-event-type" }) },
+      package: { findFirst: async () => ({ id: "test-package", eventTypeId: null }) },
+      partyAddOn: { findMany: async () => [] },
       party: {
         count: async () => 7,
         findUnique: async ({ where }: { where: { hostToken?: string; inviteToken?: string } }) => {
@@ -50,6 +53,13 @@ mock.module("../src/lib/prisma.ts", {
         eventTimelineItem: { createMany: async () => ({ count: 4 }) },
       }),
     },
+  },
+});
+
+mock.module("../src/lib/auth/staff.ts", {
+  namedExports: {
+    withStaff: (_permission: string, handler: unknown) => handler,
+    getStaffTenant: async () => ({ id: "test-tenant" }),
   },
 });
 

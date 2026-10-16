@@ -1,0 +1,6 @@
+ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "ownerAuthUserId" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "Tenant_ownerAuthUserId_key" ON "Tenant"("ownerAuthUserId");
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "authUserId" TEXT;
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "accessRole" TEXT NOT NULL DEFAULT 'FRONT_DESK';
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "accessApproved" BOOLEAN NOT NULL DEFAULT false;
+CREATE UNIQUE INDEX IF NOT EXISTS "Employee_authUserId_key" ON "Employee"("authUserId");

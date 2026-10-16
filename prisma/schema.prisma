@@ -102,6 +102,7 @@ model Tenant {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
+  ownerAuthUserId String? @unique
   timezone  String   @default("America/New_York")
   phone     String?
   email     String?
@@ -632,6 +633,9 @@ model StaffRole {
 model Employee {
   id        String         @id @default(cuid())
   tenantId  String
+  authUserId String? @unique
+  accessRole String @default("FRONT_DESK")
+  accessApproved Boolean @default(false)
   staffRoleId String?
   firstName String
   lastName  String

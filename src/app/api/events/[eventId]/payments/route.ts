@@ -1,3 +1,4 @@
+import { withStaff, getStaffContext } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { defaultCommerceSettings, normalizeCommerceSettings } from "@/lib/commerce-settings";
@@ -60,13 +61,11 @@ async function loadCommerceSettings(tenantId: string) {
   });
 }
 
-export async function POST(request: Request, { params }: Params) {
+async function handlePOST(request: Request, { params }: Params) {
   try {
     const { eventId } = await params;
     const party = await prisma.party.findUnique({
-      where: {
-        id: eventId,
-      },
+      where: { id: eventId, tenantId: getStaffContext().tenantId },
     });
 
     if (!party) {
@@ -131,6 +130,7 @@ export async function POST(request: Request, { params }: Params) {
       await tx.party.update({
         where: {
           id: party.id,
+          tenantId: getStaffContext().tenantId,
         },
         data: {
           balanceDue,
@@ -157,6 +157,7 @@ export async function POST(request: Request, { params }: Params) {
       return tx.party.findUniqueOrThrow({
         where: {
           id: party.id,
+          tenantId: getStaffContext().tenantId,
         },
         include: {
           guests: { orderBy: { createdAt: "asc" } },
@@ -186,3 +187,5 @@ export async function POST(request: Request, { params }: Params) {
     return jsonError(error, "Unable to collect payment.");
   }
 }
+
+export const POST = withStaff("payments.write", handlePOST);

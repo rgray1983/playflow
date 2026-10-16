@@ -1,3 +1,4 @@
+import { withStaff, getStaffContext } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -8,10 +9,10 @@ function jsonError(error: unknown, fallbackMessage: string, status = 500) {
   return NextResponse.json({ error: error instanceof Error ? error.message : fallbackMessage }, { status });
 }
 
-export async function POST(_request: Request, { params }: Params) {
+async function handlePOST(_request: Request, { params }: Params) {
   try {
     const { eventId } = await params;
-    const party = await prisma.party.findUnique({ where: { id: eventId } }) as any;
+    const party = await prisma.party.findUnique({ where: { id: eventId, tenantId: getStaffContext().tenantId } });
     if (!party) return NextResponse.json({ error: "Party or event was not found." }, { status: 404 });
     if (party.status !== "CANCELLED") return NextResponse.json({ event: party });
 
@@ -20,8 +21,8 @@ export async function POST(_request: Request, { params }: Params) {
 
     const updatedParty = await prisma.$transaction(async (tx) => {
       const event = await tx.party.update({
-        where: { id: eventId },
-        data: { status: restoredStatus, workflowStep: restoredStep } as any,
+        where: { id: eventId, tenantId: getStaffContext().tenantId },
+        data: { status: restoredStatus, workflowStep: restoredStep },
       });
       await tx.eventTimelineItem.create({
         data: {
@@ -41,3 +42,5 @@ export async function POST(_request: Request, { params }: Params) {
     return jsonError(error, "Unable to restore party.");
   }
 }
+
+export const POST = withStaff("parties.write", handlePOST);
