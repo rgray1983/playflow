@@ -44,6 +44,6 @@ export async function assertReservation(tx: Database, party: { id: string; tenan
   if (!party.confirmedAt && party.confirmationExpiresAt && party.confirmationExpiresAt.getTime() <= Date.now()) throw new BookingError("This pending hold has expired. Create a new booking.", 410);
   const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: party.tenantId } });
   const buffer = scheduleFrom(tenant.bookingSettings).bufferMinutes * 60000;
-  const other = await tx.party.findFirst({ where: { tenantId: party.tenantId, id: { not: party.id }, status: { not: "CANCELLED" }, startTime: { lt: new Date(party.endTime.getTime() + buffer) }, endTime: { gt: new Date(party.startTime.getTime() - buffer) }, NOT: { status: "PENDING", confirmationExpiresAt: { lte: new Date() } } } });
+  const other = await tx.party.findFirst({ where: { tenantId: party.tenantId, id: { not: party.id }, status: { not: "CANCELLED" }, startTime: { lt: new Date(party.endTime.getTime() + buffer) }, endTime: { gt: new Date(party.startTime.getTime() - buffer) }, OR: [{ status: { not: "PENDING" } }, { confirmationExpiresAt: null }, { confirmationExpiresAt: { gt: new Date() } }] } });
   if (other) throw new BookingError("This time overlaps another booking. Choose a new time before restoring or confirming.", 409);
 }

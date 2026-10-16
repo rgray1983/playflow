@@ -56,3 +56,18 @@ test("customer records are linked, reused only for matching contact and name, an
  assert.equal((await saveCustomer(database(),tenant.id,customer)).familyId,"new-family");
  await assert.rejects(saveCustomer(database([], [existing,{...existing,id:"second"}]),tenant.id,customer),BookingError);
 });
+
+test("confirmation and restore reject expired holds and live conflicts", async () => {
+  const { assertReservation } = await import("../src/lib/booking/service");
+  const party = { id:"p",tenantId:"tenant",startTime:new Date("2027-01-10T17:00Z"),endTime:new Date("2027-01-10T19:00Z"),confirmationExpiresAt:new Date("2020-01-01"),confirmedAt:null };
+  const db = { tenant:{findUniqueOrThrow:async()=>tenant},party:{findFirst:async()=>({id:"conflict"})} } as unknown as Prisma.TransactionClient;
+  await assert.rejects(assertReservation(db,party), (error: unknown) => error instanceof BookingError && error.status === 410);
+  await assert.rejects(assertReservation(db,{...party,confirmationExpiresAt:null}), (error: unknown) => error instanceof BookingError && error.status === 409);
+});
+test("extra-time add-ons extend actual reserved time", async () => {
+  const db = database();
+  Object.assign(db.partyAddOn, { findMany: async () => [{id:"extra",name:"Extra time",price:50,durationMinutes:30}] });
+  const result = await bookingOptions(db,tenant,{...input,addOnIds:["extra"]});
+  assert.equal(result.slots[0].endTime.getTime() - result.slots[0].startTime.getTime(),150 * 60000);
+  assert.equal(result.quote.total,350);
+});
