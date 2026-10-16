@@ -41,7 +41,7 @@ type HostEvent = {
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Date TBD";
-  return date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  return date.toLocaleDateString("en-US", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric" });
 }
 
 function formatTime(value: string) {

@@ -189,7 +189,7 @@ function getDayKey(value: string) {
   }
 
   const keys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-  return keys[date.getDay()];
+  return keys[date.getUTCDay()];
 }
 
 function getRowStart(value: string) {

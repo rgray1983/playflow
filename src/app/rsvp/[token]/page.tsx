@@ -25,6 +25,7 @@ function formatDate(value: string) {
   }
 
   return date.toLocaleDateString("en-US", {
+    timeZone: "UTC",
     weekday: "long",
     month: "long",
     day: "numeric",

@@ -82,7 +82,7 @@ const severityOptions = ["LOW", "MEDIUM", "HIGH"];
 function normalizeName(value: string) { return value.trim().toLowerCase(); }
 function makeSoftColor(hexColor: string) { if (!hexColor.startsWith("#") || hexColor.length !== 7) return "#F6F0E6"; return `${hexColor}22`; }
 function formatCurrency(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value); }
-function formatDate(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return "Date TBD"; return date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }); }
+function formatDate(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return "Date TBD"; return date.toLocaleDateString("en-US", { timeZone: "UTC", weekday: "long", month: "short", day: "numeric" }); }
 function formatTime(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return "Time TBD"; return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }); }
 function formatTimelineTime(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return ""; return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
 function formatShortTime(value: string | null) { if (!value) return ""; const date = new Date(value); if (Number.isNaN(date.getTime())) return ""; return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }); }
