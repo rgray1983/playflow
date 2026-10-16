@@ -89,6 +89,7 @@ enum EventDepositStatus {
   PENDING
   CASH_COLLECTED
   CARD_COLLECTED
+  OTHER_COLLECTED
   WAIVED
 }
 
@@ -582,6 +583,11 @@ model EventPayment {
   id            String             @id @default(cuid())
   tenantId      String
   partyId       String
+  requestId     String?
+  requestFingerprint String?
+  purpose       String @default("BALANCE")
+  staffName     String?
+  staffEmployeeId String?
   amount        Decimal            @db.Decimal(10, 2)
   method        EventPaymentMethod
   status        PaymentStatus      @default(PAID)
@@ -593,6 +599,7 @@ model EventPayment {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   party  Party  @relation(fields: [partyId], references: [id], onDelete: Cascade)
 
+  @@unique([tenantId, partyId, requestId])
   @@index([tenantId])
   @@index([partyId])
   @@index([method])

@@ -13,7 +13,7 @@ learn from real-world use.
 # 🔥 Highest Priority
 
 -   Complete owner onboarding: real email verification/recovery and visual review.
--   Make payment recording safe against duplicate and simultaneous submissions.
+-   Add payment refunds/reversals and credit accounting before allowing overpayments.
 -   Connect RSVP waiver acceptance to full waiver / guardian / child records.
 
 ------------------------------------------------------------------------

@@ -1,191 +1,67 @@
 import { withStaff, getStaffContext } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
-import { defaultCommerceSettings, normalizeCommerceSettings } from "@/lib/commerce-settings";
+import { normalizeCommerceSettings } from "@/lib/commerce-settings";
 import { prisma } from "@/lib/prisma";
+import { createHash } from "crypto";
+import { PaymentError, paymentCents } from "@/lib/payments/rules";
 
-type Params = {
-  params: Promise<{ eventId: string }>;
-};
-
-type PaymentPayload = {
-  amount?: number | string;
-  method?: string;
-  notes?: string;
-};
-
-function jsonError(error: unknown, fallbackMessage: string, status = 500) {
-  console.error(fallbackMessage, error);
-  return NextResponse.json(
-    { error: error instanceof Error ? error.message : fallbackMessage },
-    { status },
-  );
-}
-
-function toPaymentMethod(value: string) {
-  if (value === "cash") return "CASH";
-  if (value === "card") return "CARD";
-  if (value === "other") return "OTHER";
-  return null;
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value);
-}
-
-async function loadCommerceSettings(tenantId: string) {
-  const savedSettings = await prisma.commerceSettings.findUnique({
-    where: {
-      tenantId,
-    },
-  });
-
-  if (!savedSettings) {
-    return defaultCommerceSettings;
-  }
-
-  return normalizeCommerceSettings({
-    paymentMethods: savedSettings.paymentMethods,
-    depositRules: savedSettings.depositRules,
-    taxRules: savedSettings.taxRules,
-    feeRules: savedSettings.feeRules,
-    tipRules: savedSettings.tipRules,
-    discountRules: savedSettings.discountRules,
-    refundRules: savedSettings.refundRules,
-    receiptRules: savedSettings.receiptRules,
-    checkoutRules: savedSettings.checkoutRules,
-    processorRules: savedSettings.processorRules,
-  });
-}
-
+type Params = { params: Promise<{ eventId: string }> };
 async function handlePOST(request: Request, { params }: Params) {
   try {
+    const staff = getStaffContext();
     const { eventId } = await params;
-    const party = await prisma.party.findUnique({
-      where: { id: eventId, tenantId: getStaffContext().tenantId },
-    });
-
-    if (!party) {
-      return NextResponse.json({ error: "Party or event was not found." }, { status: 404 });
-    }
-
-    if (party.status === "CANCELLED") {
-      return NextResponse.json({ error: "Restore this party before collecting payments." }, { status: 400 });
-    }
-
-    const body = (await request.json().catch(() => ({}))) as PaymentPayload;
-    const amount = Number(body.amount);
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return NextResponse.json({ error: "Payment amount must be greater than zero." }, { status: 400 });
-    }
-
-    const commerceSettings = await loadCommerceSettings(party.tenantId);
-    const methodKey = typeof body.method === "string" ? body.method : "";
-    const paymentMethod = commerceSettings.paymentMethods.find(
-      (method) => method.key === methodKey && method.enabled && method.allowBalances,
-    );
-
-    if (!paymentMethod) {
-      return NextResponse.json({ error: "Payment method is not enabled for balance payments." }, { status: 400 });
-    }
-
-    const eventPaymentMethod = toPaymentMethod(paymentMethod.key);
-
-    if (!eventPaymentMethod) {
-      return NextResponse.json({ error: "Payment method is not supported for event payments yet." }, { status: 400 });
-    }
-
+    let body;
+    try { body = await request.json(); } catch { throw new PaymentError("Invalid payment request."); }
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new PaymentError("Invalid payment request.");
+    const amount = paymentCents(body.amount);
+    const purpose = body.purpose;
+    if (purpose !== "DEPOSIT" && purpose !== "BALANCE") throw new PaymentError("Choose deposit or balance payment.");
+    if (typeof body.requestId !== "string" || !/^[A-Za-z0-9-]{16,100}$/.test(body.requestId)) throw new PaymentError("A payment request ID is required. Refresh and try again.");
+    if (typeof body.method !== "string" || !["cash", "card", "other"].includes(body.method)) throw new PaymentError("Choose a supported payment method.");
+    if (body.notes != null && (typeof body.notes !== "string" || body.notes.length > 2000)) throw new PaymentError("Payment notes must be no more than 2,000 characters.");
     const notes = body.notes?.trim() || null;
-
-    if (paymentMethod.requiresNote && !notes) {
-      return NextResponse.json({ error: `${paymentMethod.label} payments require a note.` }, { status: 400 });
-    }
-
-    const currentBalance = Number(party.balanceDue ?? 0);
-
-    if (!commerceSettings.checkoutRules.allowOverpayment && amount > currentBalance) {
-      return NextResponse.json({ error: "Payment amount cannot exceed the remaining balance." }, { status: 400 });
-    }
-
-    const nextBalance = Math.max(currentBalance - amount, 0);
-    const paymentAmount = new Prisma.Decimal(amount.toFixed(2));
-    const balanceDue = new Prisma.Decimal(nextBalance.toFixed(2));
-
-    const updatedParty = await prisma.$transaction(async (tx) => {
-      await tx.eventPayment.create({
-        data: {
-          tenantId: party.tenantId,
-          partyId: party.id,
-          amount: paymentAmount,
-          method: eventPaymentMethod,
-          status: "PAID",
-          notes,
-        },
-      });
-
-      await tx.party.update({
-        where: {
-          id: party.id,
-          tenantId: getStaffContext().tenantId,
-        },
-        data: {
-          balanceDue,
-        },
-      });
-
-      await tx.eventTimelineItem.create({
-        data: {
-          tenantId: party.tenantId,
-          partyId: party.id,
-          icon: "$",
-          title: "Payment Collected",
-          body: `${formatCurrency(amount)} collected by ${paymentMethod.label}. Remaining balance: ${formatCurrency(nextBalance)}.`,
-          metadata: {
-            source: "party-manager",
-            action: "collect-payment",
-            amount,
-            method: paymentMethod.key,
-            balanceDue: nextBalance,
-          },
-        },
-      });
-
-      return tx.party.findUniqueOrThrow({
-        where: {
-          id: party.id,
-          tenantId: getStaffContext().tenantId,
-        },
-        include: {
-          guests: { orderBy: { createdAt: "asc" } },
-          timelineItems: { orderBy: { createdAt: "desc" }, take: 10 },
-          payments: { orderBy: { collectedAt: "desc" } },
-        },
-      });
-    });
-
-    return NextResponse.json({
-      event: {
-        ...updatedParty,
-        depositAmount: Number(updatedParty.depositAmount ?? 0),
-        balanceDue: Number(updatedParty.balanceDue ?? 0),
-        payments: updatedParty.payments.map((payment) => ({
-          id: payment.id,
-          amount: Number(payment.amount ?? 0),
-          method: payment.method,
-          notes: payment.notes ?? "",
-          staff: "Staff",
-          collectedAt: payment.collectedAt,
-          createdAt: payment.createdAt,
-        })),
-      },
-    });
+    const fingerprint = createHash("sha256").update(JSON.stringify({ amount, purpose, method: body.method, notes })).digest("hex");
+    const result = await prisma.$transaction(async tx => {
+      // Read the balance only after acquiring the same business lock used by booking changes.
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id = ${staff.tenantId} FOR UPDATE`);
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "Party" WHERE id = ${eventId} AND "tenantId" = ${staff.tenantId} FOR UPDATE`);
+      const party = await tx.party.findUnique({ where: { id: eventId, tenantId: staff.tenantId } });
+      if (!party) throw new PaymentError("Party or event was not found.", 404);
+      const existing = await tx.eventPayment.findFirst({ where: { tenantId: staff.tenantId, partyId: eventId, requestId: body.requestId } });
+      if (existing) {
+        if (existing.requestFingerprint !== fingerprint) throw new PaymentError("This payment was already recorded with different details. Start a new payment.", 409);
+        return { paymentId: existing.id, replayed: true };
+      }
+      if (party.status === "CANCELLED") throw new PaymentError("Restore this party before recording payments.");
+      if (party.status === "PENDING" && party.confirmationExpiresAt && party.confirmationExpiresAt.getTime() <= Date.now()) throw new PaymentError("This booking hold has expired. Create a new booking before recording payment.", 409);
+      const settings = normalizeCommerceSettings(await tx.commerceSettings.findUnique({ where: { tenantId: staff.tenantId } }) ?? {});
+      const method = settings.paymentMethods.find(m => m.key === body.method && m.enabled && (purpose === "DEPOSIT" ? m.allowDeposits : m.allowBalances));
+      if (!method) throw new PaymentError("This payment method is not enabled for the selected payment type.");
+      if (method.requiresNote && !notes) throw new PaymentError(`${method.label} payments require a note.`);
+      const depositPayments = await tx.eventPayment.aggregate({ where: { tenantId: staff.tenantId, partyId: eventId, purpose: "DEPOSIT", status: "PAID" }, _sum: { amount: true } });
+      const paidDeposit = Math.round(Number(depositPayments._sum.amount ?? 0) * 100);
+      const depositDue = party.depositStatus.endsWith("COLLECTED") ? 0 : Math.max(0, Math.round(Number(party.depositAmount ?? 0) * 100) - paidDeposit);
+      const balance = Math.round(Number(party.balanceDue ?? 0) * 100);
+      const due = purpose === "DEPOSIT" ? depositDue : balance;
+      if (purpose === "DEPOSIT" && party.depositStatus === "WAIVED") throw new PaymentError("The deposit was waived. Record a balance payment instead.");
+      if (amount > due) throw new PaymentError("Payment exceeds the amount due. Overpayments require a credit or refund workflow.", 409);
+      if (!settings.checkoutRules.allowPartialPayments && amount < due) throw new PaymentError("Partial payments are disabled in Commerce Settings.");
+      const appliesToBalance = purpose === "BALANCE" || settings.depositRules.applyDepositToBalance;
+      if (appliesToBalance && amount > balance) throw new PaymentError("Payment exceeds the remaining booking balance.", 409);
+      const nextBalance = balance - (appliesToBalance ? amount : 0);
+      const methodEnum = body.method.toUpperCase() as "CASH" | "CARD" | "OTHER";
+      const payment = await tx.eventPayment.create({ data: { tenantId: staff.tenantId, partyId: eventId, requestId: body.requestId, requestFingerprint: fingerprint, purpose, staffName: staff.name, staffEmployeeId: staff.employeeId, amount: new Prisma.Decimal(amount / 100), method: methodEnum, status: "PAID", notes } });
+      const depositComplete = (purpose === "DEPOSIT" && amount === depositDue) || (nextBalance === 0 && party.depositStatus === "PENDING" && Number(party.depositAmount ?? 0) > 0 && settings.depositRules.applyDepositToBalance);
+      await tx.party.update({ where: { id: eventId, tenantId: staff.tenantId }, data: { balanceDue: new Prisma.Decimal(nextBalance / 100), ...(depositComplete ? { depositStatus: methodEnum === "CASH" ? "CASH_COLLECTED" : methodEnum === "CARD" ? "CARD_COLLECTED" : "OTHER_COLLECTED", depositMethod: methodEnum, depositCapturedAt: new Date() } : {}) } });
+      await tx.eventTimelineItem.create({ data: { tenantId: staff.tenantId, partyId: eventId, icon: "$", title: purpose === "DEPOSIT" ? "Deposit Payment Recorded" : "Balance Payment Recorded", body: `$${(amount / 100).toFixed(2)} recorded as ${method.label} by ${staff.name}. Remaining balance: $${(nextBalance / 100).toFixed(2)}.`, metadata: { paymentId: payment.id, purpose, staffEmployeeId: staff.employeeId, amount: amount / 100, method: body.method, balanceDue: nextBalance / 100, source: "party-manager" } } });
+      return { paymentId: payment.id, replayed: false };
+    }, { maxWait: 10000, timeout: 15000 });
+    return NextResponse.json(result);
   } catch (error) {
-    return jsonError(error, "Unable to collect payment.");
+    if (error instanceof PaymentError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error("Unable to record payment", error);
+    return NextResponse.json({ error: "Unable to record payment. Retry the same submission to check whether it was saved." }, { status: 500 });
   }
 }
-
 export const POST = withStaff("payments.write", handlePOST);

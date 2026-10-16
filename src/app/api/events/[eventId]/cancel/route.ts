@@ -26,7 +26,7 @@ async function handlePOST(_request: Request, { params }: Params) {
           title: party.confirmedAt ? "Confirmed Party Cancelled" : "Pending Hold Cancelled",
           body: party.confirmedAt
             ? `${party.eventNumber || party.title} was cancelled by staff. Refund or credit review may be needed if payment was captured.`
-            : `${party.eventNumber || party.title} was cancelled before confirmation. No deposit was processed.`,
+            : `${party.eventNumber || party.title} was cancelled before confirmation. Review recorded payments for any refund or credit due.`,
           metadata: { source: "party-manager", action: "cancel-party", wasConfirmed: Boolean(party.confirmedAt) },
         },
       });

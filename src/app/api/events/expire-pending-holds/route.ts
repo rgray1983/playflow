@@ -1,33 +1,23 @@
 import { withStaff, getStaffContext } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-function jsonError(error: unknown, fallbackMessage: string, status = 500) {
-  console.error(fallbackMessage, error);
-  return NextResponse.json({ error: error instanceof Error ? error.message : fallbackMessage }, { status });
-}
-
+import { Prisma } from "@/generated/prisma/client";
 async function handlePOST() {
   try {
-    const expiredParties = await prisma.party.findMany({
-      where: {
-        tenantId: getStaffContext().tenantId,
-        status: "PENDING",
-        confirmationExpiresAt: { lt: new Date() },
-      },
-      select: { id: true },
-    });
-
-    const ids = expiredParties.map((party) => party.id);
-
-    if (ids.length > 0) {
-      await prisma.party.deleteMany({ where: { id: { in: ids }, tenantId: getStaffContext().tenantId } });
-    }
-
+    const tenantId = getStaffContext().tenantId;
+    const ids = await prisma.$transaction(async tx => {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id = ${tenantId} FOR UPDATE`);
+      const expired = await tx.party.findMany({ where: { tenantId, status: "PENDING", confirmationExpiresAt: { lte: new Date() } }, select: { id: true } });
+      for (const party of expired) {
+        await tx.party.update({ where: { id: party.id, tenantId }, data: { status: "CANCELLED" } });
+        await tx.eventTimelineItem.create({ data: { tenantId, partyId: party.id, title: "Pending Hold Expired", body: "The hold expired. Booking, guest records and payment history were preserved. Review any recorded payments for a refund or credit.", icon: "×", metadata: { source: "hold-expiration" } } });
+      }
+      return expired.map(p => p.id);
+    }, { maxWait: 10000, timeout: 15000 });
     return NextResponse.json({ expiredCount: ids.length, expiredPartyIds: ids });
   } catch (error) {
-    return jsonError(error, "Unable to expire pending holds.");
+    console.error("Unable to expire pending holds", error);
+    return NextResponse.json({ error: "Unable to expire pending holds." }, { status: 500 });
   }
 }
-
 export const POST = withStaff("settings.write", handlePOST);

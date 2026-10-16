@@ -256,6 +256,7 @@ function normalizeApiEvent(event: ApiEvent): CalendarEvent {
 function getDepositBadge(depositStatus: string) {
   if (depositStatus === "CASH_COLLECTED") return "Cash Paid";
   if (depositStatus === "CARD_COLLECTED") return "Card Paid";
+  if (depositStatus === "OTHER_COLLECTED") return "Deposit Paid";
   if (depositStatus === "WAIVED") return "Waived";
   return "Deposit Pending";
 }

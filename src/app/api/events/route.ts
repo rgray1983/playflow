@@ -131,7 +131,7 @@ function serializeParty(party: {
   inviteUrl: string | null;
   incidentCount?: number;
   timelineItems?: { id: string; title: string; body: string | null; icon: string | null; createdAt: Date }[];
-  payments?: { id: string; amount: unknown; method: string; notes: string | null; collectedAt: Date; createdAt: Date }[];
+  payments?: { staffName?: string | null; purpose?: string; status?: string; id: string; amount: unknown; method: string; notes: string | null; collectedAt: Date; createdAt: Date }[];
   guests?: {
     id: string;
     guestName: string | null;
@@ -185,7 +185,9 @@ function serializeParty(party: {
       amount: Number(payment.amount ?? 0),
       method: payment.method,
       notes: payment.notes ?? "",
-      staff: "Staff",
+      staff: payment.staffName ?? "Staff (legacy)",
+      purpose: payment.purpose ?? "BALANCE",
+      status: payment.status ?? "PAID",
       collectedAt: payment.collectedAt,
       createdAt: payment.createdAt,
     })),
