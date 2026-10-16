@@ -146,6 +146,7 @@ function serializeParty(party: {
   balanceDue: unknown;
   notes: string | null;
   inviteToken: string | null;
+  hostToken: string | null;
   inviteUrl: string | null;
   incidentCount?: number;
   timelineItems?: { id: string; title: string; body: string | null; icon: string | null; createdAt: Date }[];
@@ -191,6 +192,7 @@ function serializeParty(party: {
     balanceDue: Number(party.balanceDue ?? 0),
     notes: party.notes ?? "",
     inviteToken: party.inviteToken,
+    hostToken: party.hostToken,
     inviteUrl,
     incidentCount: party.incidentCount ?? 0,
     timelineItems: party.timelineItems ?? [],
@@ -288,6 +290,7 @@ export async function POST(request: Request) {
     const endTime = body.endTime ? combineDateAndTime(body.eventDate, body.endTime) : addDuration(startTime);
     const eventNumber = await nextEventNumber(tenant.id);
     const inviteToken = createToken();
+    const hostToken = createToken();
     const inviteUrl = createUrl(publicOrigin, "rsvp", inviteToken);
     const confirmationToken = createToken();
     const confirmationUrl = createUrl(publicOrigin, "confirm-party", confirmationToken);
@@ -302,6 +305,7 @@ export async function POST(request: Request) {
           tenantId: tenant.id,
           eventNumber,
           inviteToken,
+          hostToken,
           inviteUrl,
           confirmationToken,
           confirmationUrl,

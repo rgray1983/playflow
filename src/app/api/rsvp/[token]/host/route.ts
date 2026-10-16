@@ -54,7 +54,7 @@ export async function GET(_request: Request, { params }: Params) {
 
     const party = await prisma.party.findUnique({
       where: {
-        inviteToken: token,
+        hostToken: token,
       },
       include: {
         guests: {
@@ -95,7 +95,7 @@ export async function GET(_request: Request, { params }: Params) {
         attendingGuests: attendingGuests.map(serializeGuest),
         declinedGuests: declinedGuests.map(serializeGuest),
       },
-    });
+    }, { headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
   } catch (error) {
     return jsonError(error, "Unable to load host RSVP dashboard.");
   }

@@ -453,6 +453,7 @@ model Party {
   packageId      String?
   eventNumber    String?     @unique
   inviteToken    String?     @unique
+  hostToken      String?     @unique
   inviteUrl      String?
   title          String
   eventDate      DateTime
