@@ -148,6 +148,11 @@ export default function PartyManagerPage() {
       if (!response.ok) throw new Error(data.error || "Unable to load party.");
       const event = (data.events ?? []).find((item: EventRecord) => item.id === eventId);
       if (!event) throw new Error("Party or event was not found.");
+      if(!["PENDING","CANCELLED"].includes(event.status)&&(!event.hostToken||!event.inviteUrl)){
+        const linksResponse=await fetch(`/api/events/${eventId}/links`,{method:"POST"});
+        const linksData=await linksResponse.json();
+        if(linksResponse.ok){event.hostToken=linksData.hostToken;event.inviteUrl=linksData.inviteUrl;}
+      }
       setParty(normalizeEventToParty(event));
 
       const incidentsResponse = await fetch(`/api/events/${eventId}/incidents`, { cache: "no-store" });

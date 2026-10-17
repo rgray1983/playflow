@@ -1,3 +1,4 @@
+import { ensurePartyLinks, linksReleased } from "@/lib/booking/party-links";
 import { lockReservation, assertReservation } from "@/lib/booking/service";
 import { BookingError } from "@/lib/booking/rules";
 import { NextResponse } from "next/server";
@@ -48,7 +49,7 @@ export async function POST(_request: Request, { params }: Params) {
     const updatedParty = await prisma.$transaction(async (tx) => {
       const current = await lockReservation(tx, party.tenantId, party.id);
       if (current.status === "CANCELLED") throw new BookingError("This party has been cancelled.");
-      if (current.status !== "PENDING") return current;
+      if (current.status !== "PENDING") {if(linksReleased(current.status))await ensurePartyLinks(tx,current);return current;}
       await assertReservation(tx, current);
       await tx.$executeRawUnsafe(
         'UPDATE "Party" SET status = $1::"PartyStatus", "workflowStep" = $2, "confirmedAt" = NOW(), "updatedAt" = NOW() WHERE id = $3',
@@ -56,6 +57,9 @@ export async function POST(_request: Request, { params }: Params) {
         "CONFIRMED",
         party.id,
       );
+
+      const confirmed=await tx.party.findUniqueOrThrow({where:{id:party.id,tenantId:party.tenantId}});
+      await ensurePartyLinks(tx,confirmed);
 
       await tx.eventTimelineItem.create({
         data: {

@@ -21,6 +21,8 @@ test("each covered child gets a separate signed snapshot linked to the same sign
 });
 let identity:{id:string;email:string;emailVerified:boolean}|null;
 let ownParent:Record<string,unknown>|null;
+let ownBooking:Record<string,any>|null=null;
+let linkWrites=0;
 let claimTarget:Record<string,unknown>|null=null;
 let emailCollision=false,created=0,queryCount=0;
 let lastChildWhere:Record<string,unknown>={};
@@ -30,7 +32,8 @@ const db={
  tenant:{findUnique:async({where}:{where:{slug:string}})=>{queryCount++;return where.slug===tenant.slug?tenant:null;}},
  parent:{update:async({data}:{data:Record<string,unknown>})=>{ownParent={...claimTarget,...data};return ownParent;},findFirst:async({where}:{where:Record<string,unknown>})=>{queryCount++;if(where.familyClaimHash)return claimTarget;if(where.email)return emailCollision?{id:"unclaimed"}:null;return where.authUserId==="user"&&where.tenantId==="tenant"?ownParent:null;}},
  child:{findMany:async({where}:{where:Record<string,unknown>})=>{lastChildWhere=where;const ids=(where.id as {in?:string[]}|undefined)?.in;return where.tenantId==="tenant"&&where.familyId==="family"&&(!ids||ids.includes("child"))?[child]:[];},create:async({data}:{data:Record<string,unknown>})=>{created++;return{id:"new-child",...data};}},
- party:{findMany:async()=>[],findFirst:async()=>null},
+ party:{findMany:async()=>ownBooking?[ownBooking]:[],findFirst:async({where}:{where:Record<string,unknown>})=>ownBooking&&where.id===ownBooking.id&&where.tenantId===ownBooking.tenantId&&where.familyId===ownBooking.familyId&&where.primaryParentId===ownBooking.primaryParentId?ownBooking:null,update:async({data}:{data:Record<string,unknown>})=>{linkWrites++;Object.assign(ownBooking!,data);return ownBooking;}},
+ eventTimelineItem:{create:async()=>({})},
  waiver:{findFirst:async()=>null,create:async({data}:{data:Record<string,unknown>})=>{created++;return{id:"waiver",...data,children:[]};}},
  family:{create:async()=>{created++;return{id:"new-family"};}},
  employee:{findUnique:async()=>null,findMany:async()=>[]},
@@ -43,7 +46,7 @@ const {GET,POST}=await import("../src/app/api/parent/[slug]/route");
 const {requireStaff}=await import("../src/lib/auth/staff");
 const context={params:Promise.resolve({slug:tenant.slug})};
 const request=(body?:object)=>new Request("http://localhost/api/parent/palmetto-playhouse",{method:body?"POST":"GET",headers:{"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});
-beforeEach(()=>{identity={id:"user",email:"test@example.invalid",emailVerified:true};ownParent={id:"parent",tenantId:"tenant",familyId:"family",firstName:"Test",lastName:"Parent",email:identity.email,family:{status:"ACTIVE"}};claimTarget=null;emailCollision=false;created=0;queryCount=0;lastChildWhere={};});
+beforeEach(()=>{identity={id:"user",email:"test@example.invalid",emailVerified:true};ownParent={id:"parent",tenantId:"tenant",familyId:"family",firstName:"Test",lastName:"Parent",email:identity.email,family:{status:"ACTIVE"}};claimTarget=null;ownBooking=null;linkWrites=0;emailCollision=false;created=0;queryCount=0;lastChildWhere={};});
 test("parent API denies signed-out and unverified identities before database access",async()=>{
  identity=null;assert.equal((await GET(request(),context)).status,401);assert.equal(queryCount,0);
  identity={id:"user",email:"test@example.invalid",emailVerified:false};assert.equal((await GET(request(),context)).status,403);assert.equal(queryCount,0);
@@ -84,4 +87,16 @@ test("family links require the target verified email, expire, and cannot be used
  assert.equal((await POST(request(body),context)).status,200);
  assert.equal((ownParent as Record<string,unknown>|null)?.authUserId,"user");assert.equal((ownParent as Record<string,unknown>|null)?.familyClaimHash,null);
  assert.equal((await POST(request(body),context)).status,409);
+});
+
+test("parent portal repairs only its own confirmed booking links and does not expose links while pending",async()=>{
+ ownBooking={id:"own-party",tenantId:"tenant",familyId:"family",primaryParentId:"parent",status:"PENDING",hostToken:null,inviteToken:null,inviteUrl:null};
+ const requestBody={action:"party-links",partyId:"own-party"};
+ assert.equal((await POST(request(requestBody),context)).status,409);assert.equal(linkWrites,0);
+ assert.equal((await POST(request({...requestBody,partyId:"foreign-party"}),context)).status,404);
+ ownBooking.status="CONFIRMED";
+ const response=await POST(request(requestBody),context);assert.equal(response.status,200);const result=await response.json();assert.ok(result.links.hostUrl.endsWith("/host"));assert.notEqual(result.links.hostUrl,result.links.guestUrl);assert.equal(linkWrites,1);
+ const portal=await (await GET(request(),context)).json();assert.ok(portal.bookings[0].links.hostUrl);assert.equal(portal.bookings[0].hostToken,undefined);assert.equal(portal.bookings[0].inviteToken,undefined);
+ ownBooking.status="PENDING";const pending=await (await GET(request(),context)).json();assert.equal(pending.bookings[0].links,null);
+ ownBooking.status="CANCELLED";assert.equal((await POST(request(requestBody),context)).status,409);
 });

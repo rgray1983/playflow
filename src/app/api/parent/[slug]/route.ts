@@ -1,3 +1,5 @@
+import { ensurePartyLinks, partyLinkPaths } from "@/lib/booking/party-links";
+import { BookingError } from "@/lib/booking/rules";
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
@@ -12,9 +14,9 @@ async function handleGET(request: Request, context: Params) {
   const now = new Date();
   const [children, bookings] = parent ? await Promise.all([
     prisma.child.findMany({where: {tenantId: tenant.id, familyId: parent.familyId, active: true}, orderBy: {firstName:"asc"}, select: {id:true, firstName:true,lastName:true,dateOfBirth:true,allergies:true,waivers:{where:{status:"VALID",signedAt:{not:null},waiver:{kind:"LIABILITY",status:"VALID",signedAt:{not:null},version:{not:null},OR:[{expiresAt:null},{expiresAt:{gt:now}}]}},select:{id:true,signedAt:true,waiver:{select:{expiresAt:true,version:true,photoConsent:true}}}}}}),
-    prisma.party.findMany({where:{tenantId:tenant.id,primaryParentId:parent.id,familyId:parent.familyId},orderBy:{startTime:"desc"},select:{id:true,title:true,startTime:true,endTime:true,status:true,workflowStep:true,confirmationExpiresAt:true,balanceDue:true,depositAmount:true,signedForms:{where:{kind:"RENTAL",status:"VALID",signedAt:{not:null}},select:{id:true,signedAt:true,version:true}}}}),
+    prisma.party.findMany({where:{tenantId:tenant.id,primaryParentId:parent.id,familyId:parent.familyId},orderBy:{startTime:"desc"},select:{id:true,title:true,startTime:true,endTime:true,inviteToken:true,hostToken:true,status:true,workflowStep:true,confirmationExpiresAt:true,balanceDue:true,depositAmount:true,signedForms:{where:{kind:"RENTAL",status:"VALID",signedAt:{not:null}},select:{id:true,signedAt:true,version:true}}}}),
   ]) : [[], []];
-  return NextResponse.json({business:{name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},email:user.email,parent:parent?{id:parent.id,firstName:parent.firstName,lastName:parent.lastName,phone:parent.phone}:null,children,bookings,forms:tenant.slug === "palmetto-playhouse" ? {liability:legalForm("LIABILITY"),rental:legalForm("RENTAL")} : null,waiverValidityDays:tenant.waiverValidityDays});
+  return NextResponse.json({business:{name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},email:user.email,parent:parent?{id:parent.id,firstName:parent.firstName,lastName:parent.lastName,phone:parent.phone}:null,children,bookings:bookings.map(({inviteToken,hostToken,...booking})=>({...booking,links:partyLinkPaths({status:booking.status,inviteToken,hostToken})})),forms:tenant.slug === "palmetto-playhouse" ? {liability:legalForm("LIABILITY"),rental:legalForm("RENTAL")} : null,waiverValidityDays:tenant.waiverValidityDays});
 }
 async function handlePOST(request: Request, context: Params) {
   void context;
@@ -47,6 +49,12 @@ async function handlePOST(request: Request, context: Params) {
       return {saved:true};
     }
     if(!parent)throw new FormError("Set up your family first.",403);
+    if(body.action === "party-links") {
+      const partyId=clean(body.partyId,"booking ID");
+      const party=await tx.party.findFirst({where:{id:partyId,tenantId:tenant.id,familyId:parent.familyId,primaryParentId:parent.id}});
+      if(!party)throw new FormError("Booking not found.",404);
+      try{const tokens=await ensurePartyLinks(tx,party);return {links:partyLinkPaths({...party,...tokens})};}catch(error){if(error instanceof BookingError)throw new FormError(error.message,error.status);throw error;}
+    }
     if(body.action === "child") {
       const firstName=clean(body.firstName,"child first name"),lastName=clean(body.lastName,"child last name");
       let dateOfBirth: Date|null=null;

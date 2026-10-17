@@ -9,3 +9,7 @@ Reservations stay PENDING / AWAITING_DEPOSIT, unpaid and unconfirmed, with a 48-
 No new schema or database branch is needed. No Wix records are imported or changed. No live legal agreement is signed by automated tests. Square sandbox/live checkout, webhooks and payment-gated confirmation, guest invitation release, automated communications, rescheduling and final brand/mobile visual review remain future work. Staff can still manually collect and confirm through existing staff actions.
 
 Validation: parent guards and cross-site rejection, saved account authority, trusted pricing, child/waiver evidence, required agreement acknowledgments, stale quotes/catalog, retry deduplication and conflicting reservations, transaction rollback, hold limits/expiration, and cancellation ownership/payment restrictions. Existing payment, calendar, RSVP, auth and waiver suites run alongside these tests.
+
+## Follow-up — confirmed party links
+
+Both staff confirmation and existing confirmation-link handling now create separate host/guest credentials if missing. Confirmed bookings display a private Party host dashboard and a shareable Guest invitation/RSVP link (with Copy button) in the authenticated hosting parent's portal. Pending/cancelled bookings do not expose these portal links. Existing confirmed bookings repair missing links through scoped POST handlers when opened in the portal or staff event manager; the tenant lock serializes creation and existing credentials are preserved. Guest invitations never contain host credentials. No email is sent by link generation.
