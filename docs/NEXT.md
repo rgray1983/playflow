@@ -14,7 +14,7 @@ learn from real-world use.
 
 -   Complete owner onboarding: real email verification/recovery and visual review.
 -   Add payment refunds/reversals and credit accounting before allowing overpayments.
--   Complete parent-facing booking wizard with existing children, rental agreement and Square deposit checkout.
+-   Connect Square sandbox/live deposit checkout and signed webhooks to the parent booking hold flow; gate confirmation and invitation release on payment.
 -   Import Wix families and historical waivers with verified account claims and manual review of ambiguous matches.
 
 ------------------------------------------------------------------------
@@ -70,6 +70,7 @@ Ideas worth remembering but not actively planning.
 
 # Recently Completed
 
+-   Parent booking through signed rental agreement and unpaid, expiring hold (Sprint 011; Square checkout remains pending).
 -   ✅ Commerce Settings V1
 -   ✅ Booking workflow
 -   ✅ RSVP & Guest Intake
