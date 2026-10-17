@@ -5,129 +5,10 @@ import Link from "next/link";
 import SignOutButton from "@/components/SignOutButton";
 import { useEffect, useMemo, useState } from "react";
 
-type EventTypeOption = {
-  id: string;
-  name: string;
-  description: string;
-  color: string;
-  active: boolean;
-};
+import { addDays, weekDays, localDay, parseDay, formatClock, segmentsForWeek, layoutSegments, type CalendarBooking } from "@/lib/calendar/dates";
 
-type ApiEvent = {
-  id: string;
-  eventNumber: string | null;
-  title: string;
-  eventDate: string;
-  startTime: string;
-  endTime: string;
-  status: string;
-  packageName: string | null;
-  guestOfHonor: string | null;
-  depositAmount: number;
-  depositStatus: string;
-  depositMethod: string | null;
-  balanceDue: number;
-  notes: string;
-};
-
-type CalendarEvent = {
-  id: string;
-  day: string;
-  start: string;
-  end: string;
-  title: string;
-  eventTypeName: string;
-  eventNumber: string;
-  status: string;
-  packageName: string;
-  depositStatus: string;
-  balanceDue: number;
-  rowStart: number;
-  rowSpan: number;
-};
-
-const days = [
-  { label: "SUN", date: "Jun 21", key: "sun" },
-  { label: "MON", date: "Jun 22", key: "mon" },
-  { label: "TUE", date: "Jun 23", key: "tue" },
-  { label: "WED", date: "Jun 24", key: "wed" },
-  { label: "THU", date: "Jun 25", key: "thu" },
-  { label: "FRI", date: "Jun 26", key: "fri" },
-  { label: "SAT", date: "Jun 27", key: "sat" },
-];
-
-const timeRows = [
-  "8 AM",
-  "9 AM",
-  "10 AM",
-  "11 AM",
-  "12 PM",
-  "1 PM",
-  "2 PM",
-  "3 PM",
-  "4 PM",
-  "5 PM",
-  "6 PM",
-  "7 PM",
-  "8 PM",
-];
-
-const fallbackEventTypes: EventTypeOption[] = [
-  { id: "open-play", name: "Open Play", description: "", color: "#7BAE7F", active: true },
-  { id: "birthday-party", name: "Birthday Party", description: "", color: "#FFB768", active: true },
-  { id: "private-event", name: "Private Event", description: "", color: "#3B82F6", active: true },
-  { id: "field-trip", name: "Field Trip", description: "", color: "#7BAE7F", active: true },
-  { id: "class", name: "Class", description: "", color: "#FF91AA", active: true },
-  { id: "closed", name: "Closed", description: "", color: "#9CA3AF", active: true },
-];
-
-const fallbackCalendarEvents: CalendarEvent[] = [
-  {
-    id: "fallback-1",
-    day: "wed",
-    start: "6:00 PM",
-    end: "8:00 PM",
-    title: "Birthday Party - Emma R.",
-    eventTypeName: "Birthday Party",
-    eventNumber: "Sample",
-    status: "CONFIRMED",
-    packageName: "Birthday Party Package",
-    depositStatus: "CASH_COLLECTED",
-    balanceDue: 200,
-    rowStart: 11,
-    rowSpan: 2,
-  },
-  {
-    id: "fallback-2",
-    day: "fri",
-    start: "6:00 PM",
-    end: "8:00 PM",
-    title: "Birthday Party - Mason T.",
-    eventTypeName: "Birthday Party",
-    eventNumber: "Sample",
-    status: "CONFIRMED",
-    packageName: "Birthday Party Package",
-    depositStatus: "CARD_COLLECTED",
-    balanceDue: 275,
-    rowStart: 11,
-    rowSpan: 2,
-  },
-  {
-    id: "fallback-3",
-    day: "sat",
-    start: "9:00 AM",
-    end: "11:00 AM",
-    title: "Birthday Party - Sophia L.",
-    eventTypeName: "Birthday Party",
-    eventNumber: "Sample",
-    status: "PENDING",
-    packageName: "Birthday Party Package",
-    depositStatus: "PENDING",
-    balanceDue: 300,
-    rowStart: 2,
-    rowSpan: 2,
-  },
-];
+type EventTypeOption = { id: string; name: string; color: string | null };
+type CalendarData = { timezone: string; today: string; weekStart: string; events: CalendarBooking[]; upcoming: CalendarBooking[]; eventTypes: EventTypeOption[] };
 
 const navItems = [
   { label: "Dashboard", icon: "▣", href: "/" },
@@ -168,91 +49,6 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
-function formatTime(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Time TBD";
-  }
-
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function getDayKey(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "sat";
-  }
-
-  const keys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-  return keys[date.getUTCDay()];
-}
-
-function getRowStart(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return 2;
-  }
-
-  const hour = date.getHours() + date.getMinutes() / 60;
-  const startHour = 8;
-  return Math.max(1, Math.round(hour - startHour) + 1);
-}
-
-function getRowSpan(startValue: string, endValue: string) {
-  const start = new Date(startValue);
-  const end = new Date(endValue);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return 2;
-  }
-
-  const hours = Math.max(1, (end.getTime() - start.getTime()) / 1000 / 60 / 60);
-  return Math.max(1, Math.round(hours));
-}
-
-function guessEventTypeName(event: ApiEvent) {
-  const title = event.title || "";
-  const packageName = event.packageName || "";
-
-  if (title.toLowerCase().includes("field") || packageName.toLowerCase().includes("field")) {
-    return "Field Trip";
-  }
-
-  if (title.toLowerCase().includes("private") || packageName.toLowerCase().includes("private")) {
-    return "Private Event";
-  }
-
-  if (title.toLowerCase().includes("birthday") || packageName.toLowerCase().includes("birthday")) {
-    return "Birthday Party";
-  }
-
-  return "Birthday Party";
-}
-
-function normalizeApiEvent(event: ApiEvent): CalendarEvent {
-  return {
-    id: event.id,
-    day: getDayKey(event.eventDate),
-    start: formatTime(event.startTime),
-    end: formatTime(event.endTime),
-    title: event.title,
-    eventTypeName: guessEventTypeName(event),
-    eventNumber: event.eventNumber ?? "EVT",
-    status: event.status,
-    packageName: event.packageName ?? "No package",
-    depositStatus: event.depositStatus,
-    balanceDue: event.balanceDue,
-    rowStart: getRowStart(event.startTime),
-    rowSpan: getRowSpan(event.startTime, event.endTime),
-  };
-}
-
 function getDepositBadge(depositStatus: string) {
   if (depositStatus === "CASH_COLLECTED") return "Cash Paid";
   if (depositStatus === "CARD_COLLECTED") return "Card Paid";
@@ -262,7 +58,7 @@ function getDepositBadge(depositStatus: string) {
 }
 
 function getDepositBadgeStyles(depositStatus: string) {
-  if (depositStatus === "CASH_COLLECTED" || depositStatus === "CARD_COLLECTED") {
+  if (depositStatus.endsWith("COLLECTED")) {
     return "bg-[#D7F1EC] text-[#155E75]";
   }
 
@@ -274,91 +70,58 @@ function getDepositBadgeStyles(depositStatus: string) {
 }
 
 export default function CalendarPage() {
-  const [selectedDay, setSelectedDay] = useState("sun");
-  const [eventTypes, setEventTypes] = useState<EventTypeOption[]>(fallbackEventTypes);
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(fallbackCalendarEvents);
+  const [requestedDay, setRequestedDay] = useState("");
+  const [selectedDay, setSelectedDay] = useState("");
+  const [data, setData] = useState<CalendarData | null>(null);
   const [loadingEvents, setLoadingEvents] = useState(true);
+  const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let fetching = false;
     async function loadCalendarData() {
+      if (fetching) return;
+      fetching = true;
       try {
-        const [eventTypesResponse, eventsResponse] = await Promise.all([
-          fetch("/api/event-types"),
-          fetch("/api/events"),
-        ]);
-
-        const [eventTypesData, eventsData] = await Promise.all([
-          eventTypesResponse.json(),
-          eventsResponse.json(),
-        ]);
-
-        if (eventTypesResponse.ok) {
-          const activeEventTypes = (eventTypesData.eventTypes ?? []).filter(
-            (eventType: EventTypeOption) => eventType.active
-          );
-
-          if (activeEventTypes.length > 0) {
-            const merged = [...activeEventTypes];
-
-            fallbackEventTypes.forEach((fallback) => {
-              const exists = merged.some(
-                (eventType) => normalizeName(eventType.name) === normalizeName(fallback.name)
-              );
-
-              if (!exists) merged.push(fallback);
-            });
-
-            setEventTypes(merged);
-          }
-        }
-
-        if (eventsResponse.ok) {
-          const realEvents = (eventsData.events ?? []).map(normalizeApiEvent);
-
-          if (realEvents.length > 0) {
-            setCalendarEvents(realEvents);
-            setSelectedDay(realEvents[0].day);
-          }
-        }
-      } catch {
-        setCalendarEvents(fallbackCalendarEvents);
+        const response = await fetch(`/api/calendar${requestedDay ? `?date=${encodeURIComponent(requestedDay)}` : ""}`, { cache: "no-store", signal: controller.signal });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Unable to load calendar.");
+        if (!controller.signal.aborted) { setData(payload); setError(""); }
+      } catch (error) {
+        if (!controller.signal.aborted) { setData(null); setError(error instanceof Error ? error.message : "Unable to load calendar."); }
       } finally {
-        setLoadingEvents(false);
+        fetching = false;
+        if (!controller.signal.aborted) setLoadingEvents(false);
       }
     }
-
     loadCalendarData();
-  }, []);
+    const refreshTimer = window.setInterval(loadCalendarData, 30000);
+    return () => { controller.abort(); window.clearInterval(refreshTimer); };
+  }, [requestedDay, refreshKey]);
 
-  const eventTypeMap = useMemo(() => {
-    return eventTypes.reduce<Record<string, EventTypeOption>>((map, eventType) => {
-      map[normalizeName(eventType.name)] = eventType;
-      return map;
-    }, {});
-  }, [eventTypes]);
-
-  function getEventType(eventTypeName: string) {
-    return eventTypeMap[normalizeName(eventTypeName)] ??
-      fallbackEventTypes.find((type) => normalizeName(type.name) === normalizeName(eventTypeName)) ?? {
-        id: eventTypeName,
-        name: eventTypeName,
-        description: "",
-        color: "#B99AFF",
-        active: true,
-      };
-  }
-
-  const selectedDayInfo = days.find((day) => day.key === selectedDay) ?? days[0];
-
-  const selectedDayEvents = useMemo(() => {
-    return calendarEvents.filter((event) => event.day === selectedDay);
-  }, [calendarEvents, selectedDay]);
-
-  const upcomingEvents = useMemo(() => {
-    return [...calendarEvents].slice(0, 5);
-  }, [calendarEvents]);
-
+  const days = data ? weekDays(data.weekStart) : [];
+  const activeDay = days.some(day => day.key === selectedDay) ? selectedDay : days.some(day => day.key === data?.today) ? data!.today : days[0]?.key ?? "";
+  const selectedDayInfo = days.find(day => day.key === activeDay);
+  const calendarEvents = useMemo(() => data ? layoutSegments(segmentsForWeek(data.events, data.weekStart, data.timezone)) : [], [data]);
+  const selectedDayEvents = calendarEvents.filter(event => event.day === activeDay);
+  const upcomingEvents = data?.upcoming ?? [];
+  const eventTypes = data?.eventTypes ?? [];
   const visibleLegendItems = eventTypes.slice(0, 6);
+  const gridStartHour = Math.min(8, ...calendarEvents.map(event => Math.floor(event.startMinute / 60)));
+  const gridEndHour = Math.max(21, ...calendarEvents.map(event => Math.ceil(event.endMinute / 60)));
+  const timeRows = Array.from({ length: gridEndHour - gridStartHour }, (_, i) => {
+    const hour = gridStartHour + i;
+    return `${hour % 12 || 12} ${hour < 12 ? "AM" : "PM"}`;
+  });
+  function getEventType(name: string) { return eventTypes.find(type => type.name === name) ?? { name, color: "#B99AFF" }; }
+  function navigateTo(day: string) {
+    if (!day) return;
+    try { parseDay(day); } catch { return; }
+    setLoadingEvents(true); setSelectedDay(day); setRequestedDay(day); setError("");
+    setRefreshKey(key => key + 1);
+  }
+  const rangeLabel = days.length ? `${days[0].date}${days[0].key.slice(0, 4) !== days[6].key.slice(0, 4) ? `, ${days[0].key.slice(0, 4)}` : ""} – ${days[6].date}, ${days[6].key.slice(0, 4)}` : "Calendar";
 
   return (
     <main className="h-screen overflow-hidden bg-[#E7E3DA] p-5 text-[#202633] antialiased">
@@ -404,8 +167,8 @@ export default function CalendarPage() {
           </div>
         </aside>
 
-        <section className="h-full flex-1 overflow-hidden px-6 py-6">
-          <header className="mb-5 flex items-start justify-between gap-5">
+        <section className="flex h-full min-w-0 flex-1 flex-col overflow-hidden px-6 py-6">
+          <header className="mb-5 flex shrink-0 items-start justify-between gap-5">
             <div>
               <p className="text-sm font-semibold text-[#8A6D3B]">Scheduling</p>
               <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">
@@ -438,21 +201,18 @@ export default function CalendarPage() {
             </div>
           </header>
 
-          <div className="grid h-[calc(100vh-125px)] grid-cols-[1fr_320px] gap-3">
-            <section className="overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-black/10 p-4">
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_300px] gap-3">
+            <section className="flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/10 p-4">
                 <div className="flex items-center gap-3">
-                  <button className="rounded-[10px] border border-black/10 bg-white px-4 py-3 text-sm font-semibold">
-                    Week View ▾
-                  </button>
-                  <button className="rounded-[10px] border border-black/10 bg-white px-4 py-3 text-sm font-semibold">
-                    Today
-                  </button>
+                  <button aria-label="Previous week" disabled={!data || loadingEvents} onClick={() => navigateTo(addDays(activeDay, -7))} className="rounded-lg border border-black/10 px-3 py-2 disabled:opacity-40">←</button>
+                  <button disabled={!data || loadingEvents} onClick={() => navigateTo(data!.today)} className="rounded-lg border border-black/10 px-3 py-2 text-sm font-semibold disabled:opacity-40">Today</button>
+                  <button aria-label="Next week" disabled={!data || loadingEvents} onClick={() => navigateTo(addDays(activeDay, 7))} className="rounded-lg border border-black/10 px-3 py-2 disabled:opacity-40">→</button>
                 </div>
 
                 <div className="flex flex-col items-center gap-2">
                   <h2 className="text-lg font-semibold tracking-[-0.03em]">
-                    Event Engine Calendar
+                    {rangeLabel}
                   </h2>
 
                   <div className="flex max-w-[520px] flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] font-semibold text-[#5B6270]">
@@ -473,12 +233,20 @@ export default function CalendarPage() {
 
                 <div>
                   <span className="rounded-full bg-[#F6F0E6] px-3 py-1.5 text-xs font-semibold text-[#6B7280]">
-                    {loadingEvents ? "Loading..." : `${calendarEvents.length} event${calendarEvents.length === 1 ? "" : "s"}`}
+                    {loadingEvents ? "Loading..." : `${data?.events.length ?? 0} event${data?.events.length === 1 ? "" : "s"}`}
                   </span>
                 </div>
               </div>
 
-              <div className="grid h-full grid-cols-[70px_1fr]">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/10 px-4 py-3 text-xs text-[#6B7280]">
+                <label className="flex items-center gap-2">Go to date<input aria-label="Go to calendar date" type="date" min="2000-01-02" max="2099-12-31" value={activeDay || requestedDay} onChange={event => navigateTo(event.target.value)} className="rounded-lg border border-black/15 bg-white p-2 text-[#1E293B]" /></label>
+                <span>{data?.timezone ?? "Business timezone"} · Week view</span>
+                <button onClick={() => { setLoadingEvents(true); setRefreshKey(key => key + 1); }} disabled={loadingEvents} className="font-semibold underline disabled:opacity-40">Refresh</button>
+              </div>
+              {error && <p role="alert" className="border-b border-red-200 bg-red-50 p-4 text-sm text-red-800">{error} Use Refresh to try again.</p>}
+              {!loadingEvents && !error && data?.events.length === 0 && <p role="status" className="border-b border-black/10 bg-[#F6F0E6] px-4 py-3 text-sm text-[#6B7280]">No bookings scheduled for this week.</p>}
+              {loadingEvents && <p role="status" className="px-4 py-2 text-sm text-[#6B7280]">Loading calendar…</p>}
+              <div className="min-h-0 flex-1 overflow-auto"><div className="grid min-w-[700px] grid-cols-[70px_1fr]">
                 <div className="border-r border-black/10 pt-[56px]">
                   {timeRows.map((time) => (
                     <div
@@ -495,9 +263,12 @@ export default function CalendarPage() {
                     {days.map((day) => (
                       <button
                         key={day.key}
+                        aria-current={day.key === data?.today ? "date" : undefined}
+                        aria-pressed={activeDay === day.key}
+                        aria-label={`${day.label} ${day.date}`}
                         onClick={() => setSelectedDay(day.key)}
                         className={`border-r border-black/10 text-center transition last:border-r-0 ${
-                          selectedDay === day.key ? "bg-[#F6F0E6]" : "bg-white"
+                          activeDay === day.key ? "bg-[#F6F0E6]" : "bg-white"
                         }`}
                       >
                         <p className="mt-3 text-xs font-semibold text-[#1E293B]">{day.label}</p>
@@ -506,7 +277,7 @@ export default function CalendarPage() {
                     ))}
                   </div>
 
-                  <div className="relative grid h-[702px] grid-cols-7">
+                  <div className="relative grid grid-cols-7" style={{height: timeRows.length * 54}}>
                     {days.map((day) => (
                       <div
                         key={day.key}
@@ -520,17 +291,20 @@ export default function CalendarPage() {
                           .filter((event) => event.day === day.key)
                           .map((event) => {
                             const eventType = getEventType(event.eventTypeName);
-                            const color = eventType.color || "#B99AFF";
+                            const color = event.color || eventType.color || "#B99AFF";
 
                             return (
                               <Link
-                                key={event.id}
-                                href="/parties"
+                                key={event.segmentId}
+                                href={`/parties/${event.id}`}
                                 onClick={() => setSelectedDay(event.day)}
-                                className="absolute left-2 right-2 overflow-hidden rounded-[8px] border p-2 text-left text-xs shadow-sm transition hover:scale-[1.01]"
+                                title={`${event.title} · ${event.start} – ${event.end}`}
+                                className="absolute overflow-hidden rounded-[8px] border p-2 text-left text-xs shadow-sm transition hover:scale-[1.01]"
                                 style={{
-                                  top: `${(event.rowStart - 1) * 54 + 8}px`,
-                                  height: `${event.rowSpan * 54 - 10}px`,
+                                  top: `${(event.startMinute / 60 - gridStartHour) * 54 + 2}px`,
+                                  height: `${Math.max(18, (event.endMinute - event.startMinute) / 60 * 54 - 4)}px`,
+                                  left: `calc(${event.lane / event.laneCount * 100}% + 2px)`,
+                                  width: `calc(${100 / event.laneCount}% - 4px)`,
                                   borderColor: color,
                                   backgroundColor: makeSoftColor(color),
                                   color: "#1E293B",
@@ -542,7 +316,7 @@ export default function CalendarPage() {
                                 <p className="mt-1 font-bold">
                                   {getEventIcon(event.eventTypeName)} {event.title}
                                 </p>
-                                <div className="mt-1 flex flex-wrap gap-1">
+                                <div className="mt-1 flex flex-wrap gap-1"><span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold">{event.status.replace(/_/g, " ")}</span>
                                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${getDepositBadgeStyles(event.depositStatus)}`}>
                                     {getDepositBadge(event.depositStatus)}
                                   </span>
@@ -560,15 +334,16 @@ export default function CalendarPage() {
                   </div>
                 </div>
               </div>
+              </div>
             </section>
 
-            <aside className="space-y-3 overflow-hidden">
+            <aside className="min-h-0 space-y-3 overflow-y-auto">
               <section className="rounded-[12px] border border-black/10 bg-white p-4 shadow-sm">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold text-[#6B7280]">Selected Day</p>
                     <h3 className="mt-1 text-lg font-semibold text-[#1E293B]">
-                      {selectedDayInfo.label}, {selectedDayInfo.date}
+                      {selectedDayInfo ? `${selectedDayInfo.label}, ${selectedDayInfo.date}` : "Choose a day"}
                     </h3>
                   </div>
                   <Link
@@ -583,11 +358,11 @@ export default function CalendarPage() {
                   {selectedDayEvents.length > 0 ? (
                     selectedDayEvents.map((event) => {
                       const eventType = getEventType(event.eventTypeName);
-                      const color = eventType.color || "#B99AFF";
+                      const color = event.color || eventType.color || "#B99AFF";
 
                       return (
                         <Link
-                          href="/parties"
+                          href={`/parties/${event.id}`}
                           key={event.id}
                           className="block rounded-[10px] border p-3 transition hover:scale-[1.01]"
                           style={{
@@ -617,7 +392,7 @@ export default function CalendarPage() {
                     })
                   ) : (
                     <div className="rounded-[10px] bg-[#F6F0E6] p-4 text-sm text-[#6B7280]">
-                      No events scheduled.
+                      {loadingEvents ? "Loading…" : error ? "Calendar unavailable." : "No events scheduled."}
                     </div>
                   )}
                 </div>
@@ -635,11 +410,11 @@ export default function CalendarPage() {
                   {upcomingEvents.length > 0 ? (
                     upcomingEvents.map((event) => {
                       const eventType = getEventType(event.eventTypeName);
-                      const color = eventType.color || "#FFB768";
+                      const color = event.color || eventType.color || "#FFB768";
 
                       return (
                         <Link
-                          href="/parties"
+                          href={`/parties/${event.id}`}
                           key={event.id}
                           className="flex gap-3 border-b border-black/10 pb-3 last:border-b-0 last:pb-0"
                         >
@@ -652,7 +427,7 @@ export default function CalendarPage() {
                           <div>
                             <p className="font-semibold text-[#1E293B]">{event.title}</p>
                             <p className="mt-1 text-xs text-[#6B7280]">
-                              {event.eventNumber} • {event.start} • {event.packageName}
+                              {event.eventNumber} • {data ? `${localDay(event.startTime, data.timezone)} · ${formatClock(event.startTime, data.timezone)}` : ""} • {event.packageName}
                             </p>
                           </div>
                         </Link>
@@ -660,7 +435,7 @@ export default function CalendarPage() {
                     })
                   ) : (
                     <div className="rounded-[10px] bg-[#F6F0E6] p-4 text-sm text-[#6B7280]">
-                      No upcoming events yet.
+                      {loadingEvents ? "Loading…" : error ? "Calendar unavailable." : "No upcoming events yet."}
                     </div>
                   )}
                 </div>

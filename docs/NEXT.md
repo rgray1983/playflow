@@ -23,7 +23,6 @@ learn from real-world use.
 -   Add public customer booking flow for a Wix booking-page link.
 -   Inspect Wix CMS exports and implement a repeatable migration with source IDs.
 -   Add blackout dates, separate rooms if needed, and guarded rescheduling.
--   Replace the calendar demo week and controls with date-based navigation and real filtering.
 -   Replace demo dashboard totals with live business data.
 -   Replace demo walk-in check-in with persistent families and visits.
 -   Complete general POS checkout (current Process Payment button is a mockup).
