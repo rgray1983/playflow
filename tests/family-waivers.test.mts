@@ -23,6 +23,7 @@ let identity:{id:string;email:string;emailVerified:boolean}|null;
 let ownParent:Record<string,unknown>|null;
 let ownBooking:Record<string,any>|null=null;
 let linkWrites=0;
+let relinkedGuest:Record<string,any>|null=null;
 let claimTarget:Record<string,unknown>|null=null;
 let emailCollision=false,created=0,queryCount=0;
 let lastChildWhere:Record<string,unknown>={};
@@ -33,8 +34,9 @@ const db={
  parent:{update:async({data}:{data:Record<string,unknown>})=>{ownParent={...claimTarget,...data};return ownParent;},findFirst:async({where}:{where:Record<string,unknown>})=>{queryCount++;if(where.familyClaimHash)return claimTarget;if(where.email)return emailCollision?{id:"unclaimed"}:null;return where.authUserId==="user"&&where.tenantId==="tenant"?ownParent:null;}},
  child:{findMany:async({where}:{where:Record<string,unknown>})=>{lastChildWhere=where;const ids=(where.id as {in?:string[]}|undefined)?.in;return where.tenantId==="tenant"&&where.familyId==="family"&&(!ids||ids.includes("child"))?[child]:[];},create:async({data}:{data:Record<string,unknown>})=>{created++;return{id:"new-child",...data};}},
  party:{findMany:async()=>ownBooking?[ownBooking]:[],findFirst:async({where}:{where:Record<string,unknown>})=>ownBooking&&where.id===ownBooking.id&&where.tenantId===ownBooking.tenantId&&where.familyId===ownBooking.familyId&&where.primaryParentId===ownBooking.primaryParentId?ownBooking:null,update:async({data}:{data:Record<string,unknown>})=>{linkWrites++;Object.assign(ownBooking!,data);return ownBooking;}},
+ partyGuest:{updateMany:async(query:Record<string,any>)=>{relinkedGuest=query;return{count:1};}},
  eventTimelineItem:{create:async()=>({})},
- waiver:{findFirst:async()=>null,create:async({data}:{data:Record<string,unknown>})=>{created++;return{id:"waiver",...data,children:[]};}},
+ waiver:{findFirst:async()=>null,create:async({data}:{data:Record<string,unknown>})=>{created++;return{id:"waiver",...data,children:((data.children as {create:{childId:string;signedAt:Date}[]}).create).map((coverage,index)=>({id:`coverage-${index}`,...coverage}))};}},
  family:{create:async()=>{created++;return{id:"new-family"};}},
  employee:{findUnique:async()=>null,findMany:async()=>[]},
  $queryRaw:async()=>[],
@@ -46,7 +48,7 @@ const {GET,POST}=await import("../src/app/api/parent/[slug]/route");
 const {requireStaff}=await import("../src/lib/auth/staff");
 const context={params:Promise.resolve({slug:tenant.slug})};
 const request=(body?:object)=>new Request("http://localhost/api/parent/palmetto-playhouse",{method:body?"POST":"GET",headers:{"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});
-beforeEach(()=>{identity={id:"user",email:"test@example.invalid",emailVerified:true};ownParent={id:"parent",tenantId:"tenant",familyId:"family",firstName:"Test",lastName:"Parent",email:identity.email,family:{status:"ACTIVE"}};claimTarget=null;ownBooking=null;linkWrites=0;emailCollision=false;created=0;queryCount=0;lastChildWhere={};});
+beforeEach(()=>{identity={id:"user",email:"test@example.invalid",emailVerified:true};ownParent={id:"parent",tenantId:"tenant",familyId:"family",firstName:"Test",lastName:"Parent",email:identity.email,family:{status:"ACTIVE"}};claimTarget=null;ownBooking=null;linkWrites=0;relinkedGuest=null;emailCollision=false;created=0;queryCount=0;lastChildWhere={};});
 test("parent API denies signed-out and unverified identities before database access",async()=>{
  identity=null;assert.equal((await GET(request(),context)).status,401);assert.equal(queryCount,0);
  identity={id:"user",email:"test@example.invalid",emailVerified:false};assert.equal((await GET(request(),context)).status,403);assert.equal(queryCount,0);
@@ -99,4 +101,9 @@ test("parent portal repairs only its own confirmed booking links and does not ex
  const portal=await (await GET(request(),context)).json();assert.ok(portal.bookings[0].links.hostUrl);assert.equal(portal.bookings[0].hostToken,undefined);assert.equal(portal.bookings[0].inviteToken,undefined);
  ownBooking.status="PENDING";const pending=await (await GET(request(),context)).json();assert.equal(pending.bookings[0].links,null);
  ownBooking.status="CANCELLED";assert.equal((await POST(request(requestBody),context)).status,409);
+});
+
+test("replacement parent signatures attach new child coverage only to upcoming expected attendance",async()=>{
+ const response=await POST(request({action:"waiver",childIds:["child"],signing:signing()}),context);assert.equal(response.status,200);
+ const link=relinkedGuest as Record<string,any>|null;assert.ok(link);assert.equal(link.where.tenantId,"tenant");assert.equal(link.where.childId,"child");assert.equal(link.where.status,"EXPECTED");assert.equal(link.where.rsvpStatus.not,"DECLINED");assert.ok(link.where.party.endTime.gt instanceof Date);assert.equal(link.data.waiverChildId,"coverage-0");assert.equal(link.data.waiverStatus,"SIGNED");
 });

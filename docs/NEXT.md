@@ -70,6 +70,7 @@ Ideas worth remembering but not actively planning.
 
 # Recently Completed
 
+-   Parent family management, child archive/restore, saved/printable forms, and private history (Sprint 012).
 -   Parent booking through signed rental agreement and unpaid, expiring hold (Sprint 011; Square checkout remains pending).
 -   ✅ Commerce Settings V1
 -   ✅ Booking workflow

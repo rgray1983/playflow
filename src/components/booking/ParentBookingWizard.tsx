@@ -21,7 +21,7 @@ const button="rounded-lg bg-[#1E293B] px-5 py-3 font-semibold text-white disable
 const field="mt-2 block w-full rounded-lg border p-3";
 
 export default function ParentBookingWizard({slug,parent,email,familyChildren,onClose,onSaved}:{
-  slug:string;parent:{firstName:string;lastName:string;phone:string};email:string;familyChildren:Child[];onClose:()=>void;onSaved:()=>Promise<void>;
+  slug:string;parent:{firstName:string;lastName:string;phone:string|null};email:string;familyChildren:Child[];onClose:()=>void;onSaved:()=>Promise<void>;
 }) {
   const [catalog,setCatalog]=useState<Catalog|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false),[step,setStep]=useState(0);
   const [childId,setChildId]=useState(familyChildren.length===1?familyChildren[0].id:""),[eventTypeId,setEventTypeId]=useState(""),[packageId,setPackageId]=useState(""),[addOnIds,setAddOnIds]=useState<string[]>([]),[date,setDate]=useState(""),[time,setTime]=useState(""),[notes,setNotes]=useState("");

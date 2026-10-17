@@ -1,3 +1,4 @@
+import {childFields,profileFields,updateFamilyRecord} from "@/lib/parent/profile";
 import { ensurePartyLinks, partyLinkPaths } from "@/lib/booking/party-links";
 import { BookingError } from "@/lib/booking/rules";
 import { createHash } from "crypto";
@@ -13,17 +14,17 @@ async function handleGET(request: Request, context: Params) {
   const {tenant, parent, user} = getParentContext();
   const now = new Date();
   const [children, bookings] = parent ? await Promise.all([
-    prisma.child.findMany({where: {tenantId: tenant.id, familyId: parent.familyId, active: true}, orderBy: {firstName:"asc"}, select: {id:true, firstName:true,lastName:true,dateOfBirth:true,allergies:true,waivers:{where:{status:"VALID",signedAt:{not:null},waiver:{kind:"LIABILITY",status:"VALID",signedAt:{not:null},version:{not:null},OR:[{expiresAt:null},{expiresAt:{gt:now}}]}},select:{id:true,signedAt:true,waiver:{select:{expiresAt:true,version:true,photoConsent:true}}}}}}),
+    prisma.child.findMany({where: {tenantId: tenant.id, familyId: parent.familyId, active: true}, orderBy: {firstName:"asc"}, select: {id:true, firstName:true,lastName:true,dateOfBirth:true,allergies:true,medicalNotes:true,updatedAt:true,waivers:{where:{status:"VALID",signedAt:{not:null},waiver:{kind:"LIABILITY",status:"VALID",signedAt:{not:null},version:{not:null},OR:[{expiresAt:null},{expiresAt:{gt:now}}]}},orderBy:{signedAt:"desc"},take:1,select:{id:true,signedAt:true,waiver:{select:{id:true,expiresAt:true,version:true,photoConsent:true}}}}}}),
     prisma.party.findMany({where:{tenantId:tenant.id,primaryParentId:parent.id,familyId:parent.familyId},orderBy:{startTime:"desc"},select:{id:true,title:true,startTime:true,endTime:true,inviteToken:true,hostToken:true,status:true,workflowStep:true,confirmationExpiresAt:true,balanceDue:true,depositAmount:true,signedForms:{where:{kind:"RENTAL",status:"VALID",signedAt:{not:null}},select:{id:true,signedAt:true,version:true}}}}),
   ]) : [[], []];
-  return NextResponse.json({business:{name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},email:user.email,parent:parent?{id:parent.id,firstName:parent.firstName,lastName:parent.lastName,phone:parent.phone}:null,children,bookings:bookings.map(({inviteToken,hostToken,...booking})=>({...booking,links:partyLinkPaths({status:booking.status,inviteToken,hostToken})})),forms:tenant.slug === "palmetto-playhouse" ? {liability:legalForm("LIABILITY"),rental:legalForm("RENTAL")} : null,waiverValidityDays:tenant.waiverValidityDays});
+  return NextResponse.json({business:{name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},email:user.email,parent:parent?{id:parent.id,firstName:parent.firstName,lastName:parent.lastName,phone:parent.phone,updatedAt:parent.updatedAt,address1:parent.address1,address2:parent.address2,city:parent.city,state:parent.state,zip:parent.zip,emergencyContact:parent.emergencyContact,emergencyPhone:parent.emergencyPhone,relationshipToChild:parent.relationshipToChild}:null,children,bookings:bookings.map(({inviteToken,hostToken,...booking})=>({...booking,links:partyLinkPaths({status:booking.status,inviteToken,hostToken})})),forms:tenant.slug === "palmetto-playhouse" ? {liability:legalForm("LIABILITY"),rental:legalForm("RENTAL")} : null,waiverValidityDays:tenant.waiverValidityDays});
 }
 async function handlePOST(request: Request, context: Params) {
   void context;
   const {tenant,user} = getParentContext();
   let body;
   try { body = await request.json(); } catch { throw new FormError("Invalid request."); }
-  if (!body || typeof body !== "object") throw new FormError("Invalid request.");
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new FormError("Invalid request.");
   const clean = (value: unknown, field: string, max=100) => {if(typeof value!=="string" || !value.trim() || value.length>max)throw new FormError(`Enter ${field}.`);return value.trim();};
   const result = await prisma.$transaction(async tx => {
     await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id = ${tenant.id} FOR UPDATE`);
@@ -40,8 +41,7 @@ async function handlePOST(request: Request, context: Params) {
     }
     if(body.action === "setup") {
       if(parent) return {saved:true};
-      const firstName=clean(body.firstName,"first name"),lastName=clean(body.lastName,"last name"),phone=clean(body.phone,"phone number",30);
-      if(!/^[+0-9() .-]{7,30}$/.test(phone))throw new FormError("Enter a valid phone number.");
+      const {firstName,lastName,phone}=profileFields(body);
       // An email match never grants access to existing family records.
       if(await tx.parent.findFirst({where:{tenantId:tenant.id,email:{equals:user.email,mode:"insensitive"}}})) throw new FormError("The venue already has a customer record for this email. Contact staff to link it securely; no existing family was claimed.",409);
       const family=await tx.family.create({data:{tenantId:tenant.id,name:`${lastName} Family`}});
@@ -49,6 +49,7 @@ async function handlePOST(request: Request, context: Params) {
       return {saved:true};
     }
     if(!parent)throw new FormError("Set up your family first.",403);
+    if(["profile","child-update","child-archive","child-restore"].includes(body.action))return updateFamilyRecord(tx,tenant.id,parent,body);
     if(body.action === "party-links") {
       const partyId=clean(body.partyId,"booking ID");
       const party=await tx.party.findFirst({where:{id:partyId,tenantId:tenant.id,familyId:parent.familyId,primaryParentId:parent.id}});
@@ -56,11 +57,7 @@ async function handlePOST(request: Request, context: Params) {
       try{const tokens=await ensurePartyLinks(tx,party);return {links:partyLinkPaths({...party,...tokens})};}catch(error){if(error instanceof BookingError)throw new FormError(error.message,error.status);throw error;}
     }
     if(body.action === "child") {
-      const firstName=clean(body.firstName,"child first name"),lastName=clean(body.lastName,"child last name");
-      let dateOfBirth: Date|null=null;
-      if(body.dateOfBirth){ if(typeof body.dateOfBirth!=="string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.dateOfBirth))throw new FormError("Enter a valid birth date.");dateOfBirth=new Date(`${body.dateOfBirth}T00:00:00Z`);if(!Number.isFinite(dateOfBirth.getTime())||dateOfBirth.toISOString().slice(0,10)!==body.dateOfBirth||dateOfBirth>new Date())throw new FormError("Enter a valid birth date."); }
-      if(body.allergies && (typeof body.allergies!=="string"||body.allergies.length>2000))throw new FormError("Allergy notes are too long.");
-      const child=await tx.child.create({data:{tenantId:tenant.id,familyId:parent.familyId,firstName,lastName,dateOfBirth,allergies:body.allergies?.trim()||null}});
+      const child=await tx.child.create({data:{tenantId:tenant.id,familyId:parent.familyId,...childFields(body)}});
       return {saved:true,childId:child.id};
     }
     if(body.action!=="waiver" && body.action!=="agreement")throw new FormError("Unknown action.");
@@ -80,6 +77,9 @@ async function handlePOST(request: Request, context: Params) {
     const party=partyId?await tx.party.findFirst({where:{id:partyId,tenantId:tenant.id,familyId:parent.familyId,primaryParentId:parent.id,status:{notIn:["CANCELLED","COMPLETED"]}}}):null;
     if(partyId&&!party)throw new FormError("This booking is not available to this parent.",404);
     const waiver=await saveSignedForm(tx,{tenantId:tenant.id,familyId:parent.familyId,parentId:parent.id,kind,signing,validityDays:tenant.waiverValidityDays,children,partyId,eventSnapshot:party?{title:party.title,startTime:party.startTime.toISOString(),endTime:party.endTime.toISOString(),depositAmount:Number(party.depositAmount??0)}:undefined});
+    if(kind==="LIABILITY")for(const coverage of waiver.children){
+      await tx.partyGuest.updateMany({where:{tenantId:tenant.id,childId:coverage.childId,status:"EXPECTED",rsvpStatus:{not:"DECLINED"},party:{tenantId:tenant.id,status:{notIn:["CANCELLED","COMPLETED"]},endTime:{gt:new Date()}}},data:{waiverChildId:coverage.id,waiverStatus:"SIGNED",waiverSignedAt:coverage.signedAt}});
+    }
     return{saved:true,waiverId:waiver.id};
   },{maxWait:10000,timeout:15000});
   return NextResponse.json(result);
