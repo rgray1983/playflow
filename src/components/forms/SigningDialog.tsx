@@ -37,7 +37,7 @@ export default function SigningDialog({ title, busy, onClose, children }: {
           <h2 id={titleId} className="text-lg font-semibold">{title}</h2>
           <button type="button" disabled={busy} onClick={onClose} className="rounded-lg border px-4 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-40">Close</button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-5">
+        <div className="public-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-5">
           {children}
         </div>
       </div>

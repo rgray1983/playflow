@@ -25,3 +25,19 @@ body {
 *::-webkit-scrollbar {
   display: none;
 }
+
+/* Public pages and signing panels need visible, independently scrollable areas. */
+.public-scroll {
+  scrollbar-width: auto;
+}
+
+.public-scroll::-webkit-scrollbar {
+  display: block;
+  width: 10px;
+}
+
+.public-scroll::-webkit-scrollbar-thumb {
+  background: #a8a29e;
+  border: 2px solid white;
+  border-radius: 8px;
+}
