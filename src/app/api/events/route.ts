@@ -141,6 +141,7 @@ function serializeParty(party: {
     status: string;
     rsvpStatus?: string | null;
     waiverStatus?: string | null;
+    waiverChildId?: string | null;
     waiverSignedAt?: Date | null;
     declinedAt?: Date | null;
     declineReason?: string | null;
@@ -199,7 +200,7 @@ function serializeParty(party: {
       parentName: guest.parentName ?? null,
       status: guest.status,
       rsvpStatus: guest.rsvpStatus ?? "ATTENDING",
-      waiverStatus: guest.waiverStatus ?? "NEEDED",
+      waiverStatus: guest.waiverStatus === "SIGNED" && !guest.waiverChildId ? "NEEDED" : guest.waiverStatus ?? "NEEDED",
       waiverSignedAt: guest.waiverSignedAt ?? null,
       declinedAt: guest.declinedAt ?? null,
       declineReason: guest.declineReason ?? null,
@@ -315,6 +316,7 @@ async function handlePOST(request: Request) {
           title: body.title?.trim() || `${body.guestOfHonor || customerName} Booking`,
           eventDate: slot.eventDate,
           startTime: slot.startTime,
+          setupStartsAt: slot.setupStartsAt,
           endTime: slot.endTime,
           status: "PENDING",
           workflowStep: "PENDING",

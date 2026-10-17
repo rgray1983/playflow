@@ -14,7 +14,8 @@ learn from real-world use.
 
 -   Complete owner onboarding: real email verification/recovery and visual review.
 -   Add payment refunds/reversals and credit accounting before allowing overpayments.
--   Connect RSVP waiver acceptance to full waiver / guardian / child records.
+-   Complete parent-facing booking wizard with existing children, rental agreement and Square deposit checkout.
+-   Import Wix families and historical waivers with verified account claims and manual review of ambiguous matches.
 
 ------------------------------------------------------------------------
 

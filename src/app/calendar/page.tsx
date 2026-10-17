@@ -363,7 +363,7 @@ export default function CalendarPage() {
                       return (
                         <Link
                           href={`/parties/${event.id}`}
-                          key={event.id}
+                          key={event.segmentId}
                           className="block rounded-[10px] border p-3 transition hover:scale-[1.01]"
                           style={{
                             borderColor: color,

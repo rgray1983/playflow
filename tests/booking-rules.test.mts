@@ -71,3 +71,10 @@ test("extra-time add-ons extend actual reserved time", async () => {
   assert.equal(result.slots[0].endTime.getTime() - result.slots[0].startTime.getTime(),150 * 60000);
   assert.equal(result.quote.total,350);
 });
+
+test("setup reserves the 30 minutes before the party without shortening the event",async()=>{
+ const reservation={startTime:new Date("2027-01-10T15:00Z"),endTime:new Date("2027-01-10T16:45Z"),status:"CONFIRMED",confirmationExpiresAt:null};
+ const result=await bookingOptions(database([reservation]),{...tenant,bookingSettings:{...tenant.bookingSettings,bufferMinutes:0,setupMinutes:30}},input);
+ const noon=result.slots.find(slot=>slot.time==="12:00")!;
+ assert.equal(noon.setupStartsAt.toISOString(),"2027-01-10T16:30:00.000Z");assert.equal(noon.endTime.toISOString(),"2027-01-10T19:00:00.000Z");assert.equal(noon.available,false);
+});

@@ -30,14 +30,15 @@ export function clockMinutes(instant: Date | string, timezone: string) {
 export function formatClock(instant: Date | string, timezone: string) {
   return new Date(instant).toLocaleTimeString("en-US", { timeZone: timezone, hour: "numeric", minute: "2-digit" });
 }
-export type CalendarBooking = { id: string; startTime: string; endTime: string; title: string; eventTypeName: string; color: string; eventNumber: string | null; status: string; packageName: string | null; depositStatus: string; balanceDue: number };
+export type CalendarBooking = { setupStartsAt?: string | null; id: string; startTime: string; endTime: string; title: string; eventTypeName: string; color: string; eventNumber: string | null; status: string; packageName: string | null; depositStatus: string; balanceDue: number };
 export function visibleBooking(event: {status: string; confirmationExpiresAt?: Date | string | null}, now = new Date()) {
   return event.status !== "CANCELLED" && !(event.status === "PENDING" && event.confirmationExpiresAt && new Date(event.confirmationExpiresAt).getTime() <= now.getTime());
 }
 /** Split overnight bookings into daily segments; use wall-clock minutes for grid placement. */
 export function segmentsForWeek(events: CalendarBooking[], week: string, timezone: string) {
   const days = weekDays(week);
-  return events.flatMap(event => {
+  const ranges = events.flatMap(event => event.setupStartsAt && new Date(event.setupStartsAt) < new Date(event.startTime) ? [{...event, title: `${event.title} — setup`, endTime: event.startTime, startTime: event.setupStartsAt, phase: "SETUP"}, {...event, phase: "PARTY"}] : [{...event, phase: "PARTY"}]);
+  return ranges.flatMap(event => {
     const start = new Date(event.startTime), end = new Date(event.endTime);
     if (!(end > start)) return [];
     const startDay = localDay(start, timezone), endDay = localDay(end, timezone);
@@ -46,7 +47,7 @@ export function segmentsForWeek(events: CalendarBooking[], week: string, timezon
       const startMinute = day.key === startDay ? clockMinutes(start, timezone) : 0;
       const endMinute = day.key === endDay ? clockMinutes(end, timezone) : 1440;
       if (endMinute <= startMinute) return [];
-      return [{ ...event, segmentId: `${event.id}-${day.key}`, day: day.key, start: formatClock(start, timezone), end: formatClock(end, timezone), startMinute, endMinute }];
+      return [{ ...event, segmentId: `${event.id}-${day.key}-${event.phase}`, day: day.key, start: formatClock(start, timezone), end: formatClock(end, timezone), startMinute, endMinute }];
     });
   });
 }

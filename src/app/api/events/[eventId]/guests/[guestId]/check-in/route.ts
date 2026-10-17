@@ -32,6 +32,7 @@ async function handlePOST(_request: Request, { params }: Params) {
       },
       include: {
         party: true,
+        waiverChild: {include: {waiver: true}},
       },
     });
 
@@ -43,6 +44,11 @@ async function handlePOST(_request: Request, { params }: Params) {
       return NextResponse.json({ error: "Cancelled parties cannot be updated." }, { status: 400 });
     }
 
+    if (guest.rsvpStatus === "DECLINED") return NextResponse.json({error: "This guest declined the invitation."}, {status:400});
+    const coverage = guest.waiverChild;
+    const waiver = coverage?.waiver;
+    if (!coverage || !waiver || coverage.childId !== guest.childId || waiver.tenantId !== guest.tenantId || waiver.kind !== "LIABILITY" || coverage.status !== "VALID" || waiver.status !== "VALID" || !coverage.signedAt || !waiver.signedAt || !waiver.version || (waiver.expiresAt && waiver.expiresAt.getTime() <= Date.now())) return NextResponse.json({error: "A signed liability waiver linked to this child is required before check-in."}, {status:400});
+    if (guest.status === "CHECKED_IN") return NextResponse.json({guest});
     const updatedGuest = await prisma.$transaction(async (tx) => {
       const savedGuest = await tx.partyGuest.update({
         where: { id: guestId, tenantId: getStaffContext().tenantId },

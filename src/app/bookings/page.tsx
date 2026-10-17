@@ -561,7 +561,7 @@ export default function BookingsPage() {
               <label className="block text-sm font-semibold">Booking date
                 <input aria-label="Booking date" type="date" value={selectedDay} onChange={e => { setSelectedDay(e.target.value); setSelectedTime(""); setAvailability(null); }} className="mt-2 block rounded-lg border border-black/20 bg-white p-3" />
               </label>
-              <p className="mt-3 text-sm text-[#6B7280]">{availability ? `Times shown in ${availability.timezone}. The venue is reserved for the package duration.` : "Select a date to check current availability."}</p>
+              <p className="mt-3 text-sm text-[#6B7280]">{availability ? `Times shown in ${availability.timezone}. The venue is reserved for the package duration plus the configured setup time before the party.` : "Select a date to check current availability."}</p>
               {availabilityLoading && <p role="status" className="mt-4">Checking availability…</p>}
               {error && <p role="alert" className="mt-4 text-red-700">{error}</p>}
               <div className="mt-4 grid grid-cols-2 gap-3">

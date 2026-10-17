@@ -1,19 +1,10 @@
 "use client";
-
-import { SettingsSection } from "./SettingsPrimitives";
-
-export default function WaiverSettings() {
-  return (
-    <SettingsSection
-      title="Waivers"
-      description="Waivers are the intake source of truth for families, parents, children, and future parent portal accounts."
-    >
-      <div className="rounded-[10px] border border-dashed border-black/20 bg-white/70 p-6">
-        <p className="font-semibold text-[#1E293B]">Waiver settings model comes next</p>
-        <p className="mt-2 text-sm text-[#6B7280]">
-          Current schema supports waiver records. Global waiver configuration should be added as WaiverSettings or Tenant fields before persistence.
-        </p>
-      </div>
-    </SettingsSection>
-  );
+import {useEffect,useState} from "react";
+import FamilyAccessSettings from "./FamilyAccessSettings";
+import {SettingsSection} from "./SettingsPrimitives";
+export default function WaiverSettings(){
+ const [days,setDays]=useState(""),[loaded,setLoaded]=useState(false),[configured,setConfigured]=useState(false),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
+ useEffect(()=>{fetch("/api/waiver-settings").then(async response=>{if(!response.ok)throw new Error("Unable to load waiver settings.");return response.json();}).then(data=>{setDays(data.validityDays==null?"":String(data.validityDays));setConfigured(!!data.forms);setLoaded(true);}).catch(error=>setMessage(error.message));},[]);
+ async function save(){setBusy(true);setMessage("");try{const response=await fetch("/api/waiver-settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({validityDays:days===""?null:Number(days)})});const data=await response.json();if(!response.ok)throw new Error(data.error);setMessage("Saved. The policy applies to newly signed liability waivers; existing signed records are unchanged.");}catch(error){setMessage(error instanceof Error?error.message:"Unable to save.");}finally{setBusy(false);}}
+ return <SettingsSection title="Waivers & Agreements" description="Signed wording is saved with each document. Each child has a separate coverage record."><div className="space-y-4 rounded-xl bg-white p-5"><p>{configured?"Palmetto Playhouse liability and party rental forms are configured.":"Venue-specific form wording has not been configured."}</p><label className="block text-sm font-semibold">Liability waiver validity (days)<input disabled={!loaded} type="number" min={1} max={3650} value={days} onChange={e=>setDays(e.target.value)} placeholder="No automatic expiration" className="mt-2 block rounded-lg border p-3"/></label><p className="text-sm text-gray-600">Leave blank for no automatic expiration. This is an operating setting, not a determination of legal enforceability. Rental agreements remain linked to their specific booking. Photo permission is optional and recorded separately.</p><button disabled={!loaded||busy} onClick={save} className="rounded-lg bg-[#1E293B] p-3 text-white disabled:opacity-40">Save policy</button>{message&&<p role="status">{message}</p>}</div><FamilyAccessSettings/></SettingsSection>;
 }

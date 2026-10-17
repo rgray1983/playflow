@@ -4,10 +4,11 @@ import { normalizeCommerceSettings } from "@/lib/commerce-settings";
 export class BookingError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
-export type Schedule = { startTimes: string[]; bufferMinutes: number; daysOfWeek: number[] };
+export type Schedule = { setupMinutes: number; startTimes: string[]; bufferMinutes: number; daysOfWeek: number[] };
 export function scheduleFrom(value: unknown): Schedule {
   const input = (value && typeof value === "object" ? value : {}) as Partial<Schedule>;
   return {
+    setupMinutes: input.setupMinutes ?? 30,
     startTimes: input.startTimes ?? ["09:00", "12:00", "15:00", "18:00"],
     bufferMinutes: input.bufferMinutes ?? 0,
     daysOfWeek: input.daysOfWeek ?? [1, 2, 3, 4, 5, 6, 7],

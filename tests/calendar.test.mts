@@ -49,19 +49,25 @@ test("calendar API uses business-scoped overlap windows and a minimal event resp
  const response=await GET(new Request("http://localhost/api/calendar?date=2027-03-14"));
  assert.equal(response.status,200);
  const body=await response.json();assert.equal(body.timezone,timezone);assert.equal(body.weekStart,"2027-03-14");
- const where=queries[0].where as {tenantId:string;startTime:{lt:Date};endTime:{gt:Date};status:{not:string};OR:unknown[]};
+ const where=queries[0].where as {tenantId:string;AND:{OR:{setupStartsAt?:{lt:Date};startTime?:{lt:Date}}[]}[];endTime:{gt:Date};status:{not:string};OR:unknown[]};
  assert.equal(where.tenantId,"business-a");assert.equal(where.status.not,"CANCELLED");
  assert.equal(where.endTime.gt.toISOString(),"2027-03-14T05:00:00.000Z");
- assert.equal(where.startTime.lt.toISOString(),"2027-03-21T04:00:00.000Z");
- assert.equal((where.startTime.lt.getTime()-where.endTime.gt.getTime())/3600000,167);
+ assert.equal(where.AND[0].OR[0].setupStartsAt!.lt.toISOString(),"2027-03-21T04:00:00.000Z");
+ assert.equal((where.AND[0].OR[0].setupStartsAt!.lt.getTime()-where.endTime.gt.getTime())/3600000,167);
  assert.equal(queries[1].take,5);assert.equal((queries[1].where as {tenantId:string}).tenantId,"business-a");
  assert.equal(body.events[0].inviteToken,undefined);assert.equal(body.events[0].hostToken,undefined);assert.equal(body.events[0].payments,undefined);
 });
 test("calendar week across fall DST change spans 169 actual hours",async()=>{
  queries=[];await GET(new Request("http://localhost/api/calendar?date=2027-11-07"));
- const where=queries[0].where as {startTime:{lt:Date};endTime:{gt:Date}};
- assert.equal((where.startTime.lt.getTime()-where.endTime.gt.getTime())/3600000,169);
+ const where=queries[0].where as {AND:{OR:{setupStartsAt:{lt:Date}}[]}[];endTime:{gt:Date}};
+ assert.equal((where.AND[0].OR[0].setupStartsAt!.lt.getTime()-where.endTime.gt.getTime())/3600000,169);
 });
 test("invalid calendar date is rejected before querying bookings",async()=>{
  queries=[];assert.equal((await GET(new Request("http://localhost/api/calendar?date=2027-02-30"))).status,400);assert.equal(queries.length,0);
+});
+
+test("calendar shows setup separately and includes setup crossing a week boundary",()=>{
+ const booking={...event,startTime:"2027-01-17T05:15Z",endTime:"2027-01-17T07:15Z",setupStartsAt:"2027-01-17T04:45Z"};
+ const prior=segmentsForWeek([booking],"2027-01-10",timezone);assert.equal(prior.length,1);assert.equal(prior[0].phase,"SETUP");assert.equal(prior[0].day,"2027-01-16");
+ const next=segmentsForWeek([booking],"2027-01-17",timezone);assert.equal(next.length,2);assert.notEqual(next[0].segmentId,next[1].segmentId);
 });

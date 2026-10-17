@@ -106,6 +106,7 @@ model Tenant {
   ownerAuthUserId String? @unique
   timezone  String   @default("America/New_York")
   bookingSettings Json?
+  waiverValidityDays Int?
   phone     String?
   email     String?
   website   String?
@@ -189,6 +190,14 @@ model Family {
 model Parent {
   id        String   @id @default(cuid())
   tenantId  String
+  authUserId String?
+  legacyWixId String?
+  legacyWixMemberId String?
+  familyClaimHash String?
+  familyClaimExpiresAt DateTime?
+  emergencyContact String?
+  emergencyPhone String?
+  relationshipToChild String?
   familyId  String
   firstName String
   lastName  String
@@ -208,6 +217,10 @@ model Parent {
   waivers Waiver[]
   parties Party[]
 
+  @@unique([tenantId, authUserId])
+  @@unique([tenantId, legacyWixId])
+  @@unique([tenantId, legacyWixMemberId])
+  @@unique([tenantId, familyClaimHash])
   @@index([tenantId])
   @@index([familyId])
   @@index([lastName])
@@ -218,6 +231,7 @@ model Parent {
 model Child {
   id           String   @id @default(cuid())
   tenantId     String
+  legacyWixId String?
   familyId     String
   firstName    String
   lastName     String
@@ -236,6 +250,7 @@ model Child {
   waivers     WaiverChild[]
   partyGuests PartyGuest[]
 
+  @@unique([tenantId, legacyWixId])
   @@index([tenantId])
   @@index([familyId])
   @@index([firstName])
@@ -412,6 +427,15 @@ model MembershipPayment {
 model Waiver {
   id         String       @id @default(cuid())
   tenantId   String
+  kind String @default("LIABILITY")
+  version String?
+  requestId String?
+  requestHash String?
+  signerName String?
+  signerEmail String?
+  acknowledgments Json?
+  photoConsent Boolean @default(false)
+  partyId String?
   familyId   String
   signedById String?
   status     WaiverStatus @default(VALID)
@@ -427,7 +451,10 @@ model Waiver {
   family   Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
   signedBy Parent?       @relation(fields: [signedById], references: [id], onDelete: SetNull)
   children WaiverChild[]
+  party Party? @relation(fields: [partyId], references: [id], onDelete: Restrict)
 
+  @@unique([tenantId, requestId])
+  @@index([partyId])
   @@index([tenantId])
   @@index([familyId])
   @@index([signedById])
@@ -438,6 +465,11 @@ model Waiver {
 model WaiverChild {
   id       String @id @default(cuid())
   waiverId String
+  signedAt DateTime?
+  status WaiverStatus @default(VALID)
+  childNameSnapshot String?
+  dateOfBirthSnapshot DateTime?
+  partyGuests PartyGuest[]
   childId  String
 
   waiver Waiver @relation(fields: [waiverId], references: [id], onDelete: Cascade)
@@ -463,6 +495,7 @@ model Party {
   title          String
   eventDate      DateTime
   startTime      DateTime
+  setupStartsAt DateTime?
   endTime        DateTime
   status         PartyStatus @default(PENDING)
   workflowStep          String?
@@ -488,6 +521,7 @@ model Party {
   primaryParent Parent?        @relation(fields: [primaryParentId], references: [id], onDelete: SetNull)
   eventType     EventType?     @relation(fields: [eventTypeId], references: [id], onDelete: SetNull)
   package       Package?       @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  signedForms   Waiver[]
   guests        PartyGuest[]
   addOnItems    PartyAddOnItem[]
   timelineItems EventTimelineItem[]
@@ -511,6 +545,8 @@ model PartyGuest {
   id          String           @id @default(cuid())
   tenantId    String
   partyId     String
+  waiverChildId String?
+  waiverChild WaiverChild? @relation(fields: [waiverChildId], references: [id], onDelete: Restrict)
   childId     String?
   guestName   String?
   guestEmail  String?

@@ -1,5 +1,6 @@
 "use client";
 
+import LegalSigningForm, {type SigningSubmission} from "@/components/forms/LegalSigningForm";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
@@ -58,30 +59,15 @@ export default function RsvpPage() {
   const [guestPhone, setGuestPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [declineReason, setDeclineReason] = useState("");
-  const [waiverAccepted, setWaiverAccepted] = useState(false);
+  const [additionalChildren, setAdditionalChildren] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<ResponseMode>("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  async function loadEvent() {
-    try {
-      const response = await fetch(`/api/rsvp/${token}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to load RSVP.");
-      }
-
-      setEvent(data.event);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load RSVP.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    loadEvent();
+    const controller = new AbortController();
+    fetch(`/api/rsvp/${token}`, {signal:controller.signal}).then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error||"Unable to load RSVP.");return data;}).then(data=>{if(!controller.signal.aborted)setEvent(data.event);}).catch(error=>{if(!controller.signal.aborted)setErrorMessage(error.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+    return ()=>controller.abort();
   }, [token]);
 
   const eventTime = useMemo(() => {
@@ -89,7 +75,7 @@ export default function RsvpPage() {
     return `${formatTime(event.startTime)} - ${formatTime(event.endTime)}`;
   }, [event]);
 
-  async function submitRsvp(response: Exclude<ResponseMode, "">) {
+  async function submitRsvp(response: Exclude<ResponseMode, "">, signing?: SigningSubmission) {
     setSubmitting(true);
     setErrorMessage("");
 
@@ -107,7 +93,8 @@ export default function RsvpPage() {
           guestPhone,
           notes,
           declineReason,
-          waiverAccepted,
+          signing,
+          children: [guestName,...additionalChildren],
         }),
       });
 
@@ -124,7 +111,7 @@ export default function RsvpPage() {
       setGuestPhone("");
       setNotes("");
       setDeclineReason("");
-      setWaiverAccepted(false);
+      setAdditionalChildren([]);
       setResponseMode("");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to submit RSVP.");
@@ -227,19 +214,10 @@ export default function RsvpPage() {
                   <input value={guestPhone} onChange={(event) => setGuestPhone(event.target.value)} className="w-full rounded-[10px] border border-black/10 bg-[#F6F0E6] px-4 py-3 text-sm outline-none" placeholder="Phone" />
                 </div>
                 <textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="min-h-[88px] w-full resize-none rounded-[10px] border border-black/10 bg-[#F6F0E6] px-4 py-3 text-sm outline-none" placeholder="Allergies, notes, or special instructions" />
-                <label className="flex gap-3 rounded-[10px] border border-black/10 bg-[#F6F0E6] p-4 text-sm">
-                  <input type="checkbox" checked={waiverAccepted} onChange={(event) => setWaiverAccepted(event.target.checked)} className="mt-1" />
-                  <span>
-                    <strong>I agree to sign the waiver for this guest.</strong>
-                    <br />
-                    <span className="text-[#6B7280]">This preserves the current placeholder waiver behavior.</span>
-                  </span>
-                </label>
-
-                <div className="grid gap-3 md:grid-cols-[auto_1fr]">
-                  <button onClick={() => setResponseMode("")} className="rounded-[12px] border border-black/10 bg-white px-4 py-4 text-sm font-semibold text-[#1E293B]">Back</button>
-                  <button onClick={() => submitRsvp("attending")} disabled={submitting || !guestName.trim()} className="rounded-[12px] bg-[#1E293B] px-4 py-4 text-sm font-semibold text-white disabled:opacity-40">{submitting ? "Submitting..." : "Submit RSVP"}</button>
-                </div>
+                {additionalChildren.map((name,index)=><label key={index} className="block text-sm">Additional child {index+2}<input required value={name} maxLength={150} onChange={event=>setAdditionalChildren(current=>current.map((value,i)=>i===index?event.target.value:value))} className="mt-1 w-full rounded-lg border p-3"/><button onClick={()=>setAdditionalChildren(current=>current.filter((_,i)=>i!==index))} className="mt-1 underline">Remove child</button></label>)}
+                <button disabled={additionalChildren.length>=9} onClick={()=>setAdditionalChildren(current=>[...current,""])} className="rounded-lg border px-4 py-2 disabled:opacity-40">Add another attending child</button>
+                <LegalSigningForm kind="LIABILITY" signerName={parentName.trim()} signerEmail={guestEmail.trim().toLowerCase()} onSign={async signing=>{if(!guestName.trim()||additionalChildren.some(name=>!name.trim()))throw new Error("Enter every attending child’s full name above.");await submitRsvp("attending",signing);}} childrenSummary={<p className="text-sm font-semibold">Children covered: {[guestName,...additionalChildren].filter(Boolean).join(", ")||"Enter children above"}</p>}/>
+                <button onClick={()=>setResponseMode("")} disabled={submitting} className="rounded-lg border p-3">Back</button>
               </div>
             </section>
           )}

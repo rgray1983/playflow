@@ -1,0 +1,18 @@
+ALTER TABLE "Tenant" ADD COLUMN "waiverValidityDays" INTEGER;
+ALTER TABLE "Parent" ADD COLUMN "authUserId" TEXT, ADD COLUMN "legacyWixId" TEXT;
+CREATE UNIQUE INDEX "Parent_tenantId_authUserId_key" ON "Parent"("tenantId", "authUserId");
+CREATE UNIQUE INDEX "Parent_tenantId_legacyWixId_key" ON "Parent"("tenantId", "legacyWixId");
+ALTER TABLE "Party" ADD COLUMN "setupStartsAt" TIMESTAMP(3);
+ALTER TABLE "Waiver" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'LIABILITY', ADD COLUMN "version" TEXT, ADD COLUMN "requestId" TEXT, ADD COLUMN "requestHash" TEXT, ADD COLUMN "signerName" TEXT, ADD COLUMN "signerEmail" TEXT, ADD COLUMN "acknowledgments" JSONB, ADD COLUMN "photoConsent" BOOLEAN NOT NULL DEFAULT false, ADD COLUMN "partyId" TEXT;
+CREATE UNIQUE INDEX "Waiver_tenantId_requestId_key" ON "Waiver"("tenantId", "requestId");
+CREATE INDEX "Waiver_partyId_idx" ON "Waiver"("partyId");
+ALTER TABLE "Waiver" ADD CONSTRAINT "Waiver_partyId_fkey" FOREIGN KEY ("partyId") REFERENCES "Party"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "WaiverChild" ADD COLUMN "signedAt" TIMESTAMP(3), ADD COLUMN "status" "WaiverStatus" NOT NULL DEFAULT 'VALID', ADD COLUMN "childNameSnapshot" TEXT, ADD COLUMN "dateOfBirthSnapshot" TIMESTAMP(3);
+ALTER TABLE "PartyGuest" ADD COLUMN "waiverChildId" TEXT;
+ALTER TABLE "PartyGuest" ADD CONSTRAINT "PartyGuest_waiverChildId_fkey" FOREIGN KEY ("waiverChildId") REFERENCES "WaiverChild"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Parent" ADD COLUMN "legacyWixMemberId" TEXT, ADD COLUMN "emergencyContact" TEXT, ADD COLUMN "emergencyPhone" TEXT, ADD COLUMN "relationshipToChild" TEXT;
+CREATE UNIQUE INDEX "Parent_tenantId_legacyWixMemberId_key" ON "Parent"("tenantId", "legacyWixMemberId");
+ALTER TABLE "Child" ADD COLUMN "legacyWixId" TEXT;
+CREATE UNIQUE INDEX "Child_tenantId_legacyWixId_key" ON "Child"("tenantId", "legacyWixId");
+ALTER TABLE "Parent" ADD COLUMN "familyClaimHash" TEXT, ADD COLUMN "familyClaimExpiresAt" TIMESTAMP(3);
+CREATE UNIQUE INDEX "Parent_tenantId_familyClaimHash_key" ON "Parent"("tenantId", "familyClaimHash");
