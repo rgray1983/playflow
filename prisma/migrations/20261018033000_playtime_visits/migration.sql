@@ -1,0 +1,12 @@
+ALTER TABLE "Family" ADD COLUMN "intakeRequestId" TEXT, ADD COLUMN "intakeRequestHash" TEXT;
+ALTER TABLE "Child" ADD COLUMN "intakeRequestId" TEXT;
+ALTER TABLE "Visit" ADD COLUMN "requestId" TEXT, ADD COLUMN "requestHash" TEXT, ADD COLUMN "guardianParentId" TEXT, ADD COLUMN "membershipId" TEXT, ADD COLUMN "waiverChildId" TEXT, ADD COLUMN "admissionSnapshot" JSONB, ADD COLUMN "checkInStaffId" TEXT, ADD COLUMN "checkInStaffName" TEXT, ADD COLUMN "checkOutStaffId" TEXT, ADD COLUMN "checkOutStaffName" TEXT;
+CREATE UNIQUE INDEX "Family_tenantId_intakeRequestId_key" ON "Family"("tenantId","intakeRequestId");
+CREATE UNIQUE INDEX "Child_tenantId_intakeRequestId_key" ON "Child"("tenantId","intakeRequestId");
+CREATE UNIQUE INDEX "Visit_tenantId_childId_requestId_key" ON "Visit"("tenantId","childId","requestId");
+CREATE INDEX "Visit_tenantId_requestId_idx" ON "Visit"("tenantId","requestId");
+CREATE INDEX "Visit_membershipId_idx" ON "Visit"("membershipId");
+CREATE UNIQUE INDEX "Visit_one_active_child" ON "Visit"("tenantId","childId") WHERE status='CHECKED_IN' AND "checkedOutAt" IS NULL;
+ALTER TABLE "Visit" ADD CONSTRAINT "Visit_guardianParentId_fkey" FOREIGN KEY ("guardianParentId") REFERENCES "Parent"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Visit" ADD CONSTRAINT "Visit_membershipId_fkey" FOREIGN KEY ("membershipId") REFERENCES "Membership"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Visit" ADD CONSTRAINT "Visit_waiverChildId_fkey" FOREIGN KEY ("waiverChildId") REFERENCES "WaiverChild"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

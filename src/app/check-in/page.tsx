@@ -1,384 +1,55 @@
 "use client";
-
-import StaffName from "@/components/StaffName";
 import Link from "next/link";
+import {useCallback,useEffect,useRef,useState,type FormEvent,type ReactNode} from "react";
+import StaffName from "@/components/StaffName";
 import SignOutButton from "@/components/SignOutButton";
-import { useMemo, useState } from "react";
-
-const families = [
-  {
-    id: "gray-family",
-    familyName: "Gray Family",
-    primaryPhone: "843-555-0102",
-    guardians: [
-      { id: "nicole-gray", name: "Nicole Gray", role: "Primary Contact", phone: "843-555-0102" },
-      { id: "david-gray", name: "David Gray", role: "Guardian", phone: "843-555-0101" },
-    ],
-    children: [
-      {
-        id: "dava-gray",
-        name: "Dava Gray",
-        age: 9,
-        membership: "Monthly Unlimited",
-        membershipStatus: "Active",
-        waiverStatus: "Valid",
-        allergies: "None listed",
-        lastVisit: "Today",
-        status: "ready",
-      },
-      {
-        id: "emma-gray",
-        name: "Emma Gray",
-        age: 6,
-        membership: "Day Pass",
-        membershipStatus: "None",
-        waiverStatus: "Missing",
-        allergies: "Peanut allergy",
-        lastVisit: "No recent visit",
-        status: "needs-waiver",
-      },
-    ],
-  },
-  {
-    id: "smith-family",
-    familyName: "Smith Family",
-    primaryPhone: "843-555-0198",
-    guardians: [
-      { id: "ashley-smith", name: "Ashley Smith", role: "Primary Contact", phone: "843-555-0198" },
-    ],
-    children: [
-      {
-        id: "taylan-smith",
-        name: "Taylan Smith",
-        age: 8,
-        membership: "Summer Unlimited",
-        membershipStatus: "Active",
-        waiverStatus: "Valid",
-        allergies: "None listed",
-        lastVisit: "Yesterday",
-        status: "ready",
-      },
-    ],
-  },
-];
-
-const checkedInGuests = [
-  { name: "Mason Taylor", family: "Taylor Family", time: "9:18 AM", status: "Open Play" },
-  { name: "Ava Johnson", family: "Johnson Family", time: "9:42 AM", status: "Member" },
-];
-
-function getStatusStyles(status: string) {
-  if (status === "ready") {
-    return { badge: "bg-[#D7F1EC] text-[#155E75]", label: "Ready", border: "border-[#80DDD5]" };
-  }
-
-  if (status === "needs-waiver") {
-    return { badge: "bg-[#FFE0E9] text-[#9F1239]", label: "Waiver Needed", border: "border-[#FF91AA]" };
-  }
-
-  return { badge: "bg-[#FFF0C4] text-[#92400E]", label: "Review", border: "border-[#FFD772]" };
-}
-
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("");
-}
-
-export default function CheckInPage() {
-  const [query, setQuery] = useState("");
-  const [selectedFamilyId, setSelectedFamilyId] = useState(families[0].id);
-  const [selectedPersonId, setSelectedPersonId] = useState(families[0].children[0].id);
-
-  const filteredFamilies = useMemo(() => {
-    const cleanQuery = query.trim().toLowerCase();
-
-    if (!cleanQuery) {
-      return families;
-    }
-
-    return families.filter((family) => {
-      const guardianMatch = family.guardians.some((guardian) =>
-        `${guardian.name} ${guardian.phone}`.toLowerCase().includes(cleanQuery)
-      );
-
-      const childMatch = family.children.some((child) =>
-        child.name.toLowerCase().includes(cleanQuery)
-      );
-
-      return (
-        family.familyName.toLowerCase().includes(cleanQuery) ||
-        family.primaryPhone.includes(cleanQuery) ||
-        guardianMatch ||
-        childMatch
-      );
-    });
-  }, [query]);
-
-  const selectedFamily =
-    families.find((family) => family.id === selectedFamilyId) ?? families[0];
-
-  function selectFamily(familyId: string) {
-    const family = families.find((item) => item.id === familyId);
-
-    if (!family) {
-      return;
-    }
-
-    setSelectedFamilyId(family.id);
-    setSelectedPersonId(family.children[0]?.id ?? family.guardians[0]?.id ?? "");
-  }
-
-  return (
-    <main className="h-screen overflow-hidden bg-[#E7E3DA] p-5 text-[#202633] antialiased">
-      <div className="flex h-full overflow-hidden rounded-[18px] bg-[#F6F0E6] shadow-sm">
-        <aside className="relative h-full w-[260px] shrink-0 border-r border-black/10 bg-[#F2EFE8] px-6 py-7">
-          <div className="mb-9">
-            <div className="mb-2 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#1E293B] text-sm font-semibold text-white">
-                PF
-              </div>
-              <div>
-                <h1 className="text-lg font-semibold tracking-[-0.03em]">PlayFlow</h1>
-                <p className="text-xs text-[#6B7280]">Palmetto Playhouse</p>
-              </div>
-            </div>
-          </div>
-
-          <nav className="space-y-1">
-            {[
-  { label: "Dashboard", icon: "▣", href: "/" },
-  { label: "Check-In", icon: "✓", href: "/check-in" },
-  { label: "Calendar", icon: "◷", href: "/calendar" },
-  { label: "Party & Events", icon: "★", href: "/parties" },
-  { label: "POS", icon: "$", href: "/pos" },
-  { label: "Reports", icon: "▥", href: "/reports" },
-  { label: "Company Settings", icon: "⚙", href: "/company-settings" },
-].map((item) => {
-              const isActive = item.href === "/check-in";
-
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`flex w-full items-center gap-4 rounded-[8px] px-4 py-3 text-left text-sm font-semibold transition ${
-                    isActive
-                      ? "bg-white text-[#111827] shadow-sm"
-                      : "text-[#5B6270] hover:bg-white/70 hover:text-[#111827]"
-                  }`}
-                >
-                  <span className="flex h-5 w-5 items-center justify-center text-base">
-                    {item.icon}
-                  </span>
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          <div className="absolute bottom-7 left-6 right-6">
-            <SignOutButton />
-          </div>
-        </aside>
-
-        <section className="h-full flex-1 overflow-y-auto px-6 py-6">
-          <header className="mb-5 flex items-start justify-between gap-5">
-            <div>
-              <p className="text-sm font-semibold text-[#8A6D3B]">Front Desk Operations</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">
-                Check-In
-              </h1>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                title="Notifications"
-                className="relative flex h-10 w-10 items-center justify-center rounded-[10px] bg-white text-[#1E293B] shadow-sm transition hover:bg-[#FAFAFA]"
-              >
-                <span className="text-lg leading-none">🔔</span>
-                <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" />
-              </button>
-
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FFD56B] text-md font-semibold text-[#1E293B]">
-                  D
-                </div>
-                <span className="text-sm font-medium text-[#1E293B]"><StaffName /></span>
-              </div>
-            </div>
-          </header>
-
-          <div className="grid h-[calc(100vh-150px)] grid-cols-[360px_1fr_310px] gap-3">
-            <section className="overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
-              <div className="border-b border-black/10 p-4">
-                <p className="text-sm font-semibold text-[#1E293B]">Family Search</p>
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  className="mt-3 w-full rounded-[10px] border border-black/10 bg-[#F6F0E6] px-4 py-3 text-sm outline-none"
-                  placeholder="Search family, parent, child, phone..."
-                />
-              </div>
-
-              <div className="h-full space-y-2 overflow-y-auto p-3 pb-24">
-                {filteredFamilies.map((family) => (
-                  <button
-                    key={family.id}
-                    onClick={() => selectFamily(family.id)}
-                    className={`w-full rounded-[10px] border px-4 py-3 text-left transition ${
-                      selectedFamily.id === family.id
-                        ? "border-[#1E293B] bg-[#1E293B] text-white"
-                        : "border-black/10 bg-[#F6F0E6] text-[#1E293B] hover:bg-[#EFE8DC]"
-                    }`}
-                  >
-                    <p className="font-semibold">{family.familyName}</p>
-                    <p className={`mt-1 text-xs ${selectedFamily.id === family.id ? "text-white/70" : "text-[#6B7280]"}`}>
-                      {family.guardians[0]?.name} • {family.primaryPhone}
-                    </p>
-                    <p className={`mt-1 text-xs ${selectedFamily.id === family.id ? "text-white/70" : "text-[#6B7280]"}`}>
-                      {family.children.length} child{family.children.length === 1 ? "" : "ren"} on file
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
-              <div className="border-b border-black/10 p-4">
-                <p className="text-sm font-semibold text-[#6B7280]">Selected Family</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-[#1E293B]">
-                  {selectedFamily.familyName}
-                </h2>
-              </div>
-
-              <div className="h-full overflow-y-auto p-4 pb-24">
-                <div className="mb-4 rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-[#6B7280]">
-                      Parents / Guardians
-                    </h3>
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-[#1E293B]">
-                      {selectedFamily.guardians.length}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {selectedFamily.guardians.map((guardian) => {
-                      const isSelected = selectedPersonId === guardian.id;
-
-                      return (
-                        <button
-                          key={guardian.id}
-                          onClick={() => setSelectedPersonId(guardian.id)}
-                          className={`rounded-[10px] border p-4 text-left transition ${
-                            isSelected ? "border-[#1E293B] bg-white" : "border-black/10 bg-white/70 hover:bg-white"
-                          }`}
-                        >
-                          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#1E293B] text-sm font-semibold text-white">
-                            {getInitials(guardian.name)}
-                          </div>
-                          <p className="font-semibold text-[#1E293B]">{guardian.name}</p>
-                          <p className="mt-1 text-xs text-[#6B7280]">{guardian.role}</p>
-                          <p className="mt-2 text-xs text-[#6B7280]">{guardian.phone}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-[#6B7280]">
-                      Children
-                    </h3>
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-[#1E293B]">
-                      {selectedFamily.children.length}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {selectedFamily.children.map((child) => {
-                      const styles = getStatusStyles(child.status);
-                      const isSelected = selectedPersonId === child.id;
-
-                      return (
-                        <button
-                          key={child.id}
-                          onClick={() => setSelectedPersonId(child.id)}
-                          className={`rounded-[10px] border p-4 text-left transition ${
-                            isSelected ? `${styles.border} bg-white` : "border-black/10 bg-white/70 hover:bg-white"
-                          }`}
-                        >
-                          <div className="mb-3 flex items-start justify-between gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1E293B] text-sm font-semibold text-white">
-                              {getInitials(child.name)}
-                            </div>
-                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${styles.badge}`}>
-                              {styles.label}
-                            </span>
-                          </div>
-
-                          <p className="font-semibold text-[#1E293B]">{child.name}</p>
-                          <p className="mt-1 text-xs text-[#6B7280]">Age {child.age} • {child.membership}</p>
-
-                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                            <span className="rounded-[8px] bg-[#F6F0E6] px-2 py-2 text-[#1E293B]">
-                              Waiver: {child.waiverStatus}
-                            </span>
-                            <span className="rounded-[8px] bg-[#F6F0E6] px-2 py-2 text-[#1E293B]">
-                              Member: {child.membershipStatus}
-                            </span>
-                          </div>
-
-                          {child.waiverStatus === "Valid" ? (
-                            <div className="mt-4 rounded-[8px] bg-[#7BAE7F] px-4 py-3 text-center text-sm font-semibold text-white">
-                              CHECK IN
-                            </div>
-                          ) : (
-                            <div className="mt-4 grid grid-cols-2 gap-2">
-                              <span className="rounded-[8px] bg-[#1E293B] px-3 py-3 text-center text-xs font-semibold text-white">
-                                SIGN WAIVER
-                              </span>
-                              <span className="rounded-[8px] bg-[#E5E7EB] px-3 py-3 text-center text-xs font-semibold text-[#6B7280]">
-                                HOLD
-                              </span>
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <aside className="overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
-              <div className="border-b border-black/10 p-4">
-                <p className="text-sm font-semibold text-[#1E293B]">Currently Checked In</p>
-              </div>
-
-              <div className="space-y-2 p-3">
-                {checkedInGuests.map((guest) => (
-                  <div key={guest.name} className="rounded-[10px] bg-[#F6F0E6] p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-[#1E293B]">{guest.name}</p>
-                        <p className="mt-1 text-xs text-[#6B7280]">{guest.family}</p>
-                      </div>
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-medium">{guest.time}</span>
-                    </div>
-
-                    <button className="mt-3 w-full rounded-[8px] border border-black/10 bg-white px-3 py-2 text-sm font-semibold text-[#1E293B]">
-                      Check Out
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </aside>
-          </div>
-        </section>
-      </div>
-    </main>
-  );
+import SigningDialog from "@/components/forms/SigningDialog";
+import LegalSigningForm,{type SigningSubmission} from "@/components/forms/LegalSigningForm";
+import IntakeForm from "@/components/check-in/IntakeForm";
+import type {CheckInOverview,DeskChild,DeskEntry,DeskFamily,DeskSearchResult} from "@/components/check-in/types";
+const button="rounded-lg bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white disabled:opacity-40";
+const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
+const links=[["Dashboard","/"],["Check-In","/check-in"],["Calendar","/calendar"],["Party & Events","/parties"],["POS","/pos"],["Company Settings","/company-settings"]];
+function Shell({name,children}:{name:string;children:ReactNode}){return <main className="h-dvh overflow-hidden bg-[#E7E3DA] p-2 text-[#202633] sm:p-5"><div className="flex h-full overflow-hidden rounded-2xl bg-[#F6F0E6] shadow-sm"><aside className="hidden w-[235px] shrink-0 flex-col border-r border-black/10 bg-[#F2EFE8] p-5 md:flex"><h1 className="text-xl font-semibold">PlayFlow</h1><p className="mt-1 text-xs text-gray-600">{name}</p><nav className="mt-8 space-y-2">{links.map(([label,href])=><Link key={href} href={href} className={`block rounded-lg px-4 py-3 text-sm font-semibold ${href==="/check-in"?"bg-white shadow-sm":"text-gray-600 hover:bg-white/70"}`}>{label}</Link>)}</nav><div className="mt-auto space-y-2 pt-5"><p className="text-sm"><StaffName/></p><SignOutButton/></div></aside><section className="public-scroll min-w-0 flex-1 overflow-y-auto p-4 sm:p-7"><nav className="mb-5 flex flex-wrap gap-4 text-sm underline md:hidden">{links.map(([label,href])=><Link key={href} href={href}>{label}</Link>)}</nav>{children}</section></div></main>;}
+export default function CheckInPage(){
+  const [overview,setOverview]=useState<CheckInOverview|null>(null),[page,setPage]=useState(1),[loading,setLoading]=useState(true),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
+  const [query,setQuery]=useState(""),[results,setResults]=useState<DeskSearchResult[]>([]),[searching,setSearching]=useState(false),[family,setFamily]=useState<DeskFamily|null>(null),[familyLoading,setFamilyLoading]=useState(false);
+  const [guardianId,setGuardianId]=useState(""),[entries,setEntries]=useState<Record<string,DeskEntry>>({}),[admissionAcknowledged,setAdmissionAcknowledged]=useState(false),[intake,setIntake]=useState<"new"|"child"|null>(null),[waiverOpen,setWaiverOpen]=useState(false),[waiverEmail,setWaiverEmail]=useState("");
+  const selectedFamily=useRef(""),requestId=useRef("");
+  const fetchOverview=useCallback(async()=>{const response=await fetch(`/api/check-in?page=${page}`,{cache:"no-store"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Unable to load check-in.");return result as CheckInOverview;},[page]);
+  async function loadOverview(){const result=await fetchOverview();setOverview(result);setLoading(false);}
+  async function loadFamily(id:string){const response=await fetch(`/api/check-in?familyId=${encodeURIComponent(id)}`,{cache:"no-store"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Unable to load family.");if(selectedFamily.current===id){setFamily(result.family);setGuardianId(current=>result.family.parents.some((p:{id:string})=>p.id===current)?current:result.family.parents[0]?.id??"");}return result.family as DeskFamily;}
+  async function chooseFamily(id:string){selectedFamily.current=id;setFamily(null);setFamilyLoading(true);setEntries({});setGuardianId("");setAdmissionAcknowledged(false);requestId.current="";setError("");setNotice("");try{await loadFamily(id);}catch(error){setError(error instanceof Error?error.message:"Unable to load family.");}finally{if(selectedFamily.current===id)setFamilyLoading(false);}}
+  useEffect(()=>{let active=true;const apply=(result:CheckInOverview)=>{if(active){setOverview(result);setLoading(false);}};fetchOverview().then(apply).catch(error=>{if(active){setError(error.message);setLoading(false);}});const timer=window.setInterval(()=>fetchOverview().then(apply).catch(()=>{}),15000);return()=>{active=false;window.clearInterval(timer);};},[fetchOverview]);
+  useEffect(()=>{if(query.trim().length<2)return;const controller=new AbortController();const timer=window.setTimeout(()=>{fetch(`/api/check-in?q=${encodeURIComponent(query.trim())}`,{cache:"no-store",signal:controller.signal}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error||"Unable to search families.");return result.families as DeskSearchResult[];}).then(result=>{setResults(result);setSearching(false);}).catch(error=>{if(!controller.signal.aborted){setError(error.message);setSearching(false);}});},300);return()=>{window.clearTimeout(timer);controller.abort();};},[query]);
+  async function post(body:object,path="/api/check-in"){const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const result=await response.json();if(!response.ok)throw new Error(result.error||"Unable to save visit.");return result;}
+  async function refresh(){await Promise.all([loadOverview(),...(selectedFamily.current?[loadFamily(selectedFamily.current)]:[])]);}
+  const guardian=family?.parents.find(parent=>parent.id===guardianId),selected=family?.children.filter(child=>entries[child.id])??[],hasAdmission=selected.some(child=>entries[child.id].mode==="ADMISSION");
+  function draftChanged(){requestId.current="";setAdmissionAcknowledged(false);setNotice("");}
+  function defaultEntry(child:DeskChild):DeskEntry{const member=child.memberships.find(m=>m.eligible);return member?{mode:"MEMBERSHIP",membershipId:member.id}:{mode:"ADMISSION",admissionTypeId:overview?.admissions[0]?.id??""};}
+  function toggleChild(child:DeskChild,checked:boolean){draftChanged();setEntries(current=>{const next={...current};if(checked)next[child.id]=defaultEntry(child);else delete next[child.id];return next;});}
+  function chooseEntry(childId:string,value:string){draftChanged();const split=value.indexOf(":");const mode=value.slice(0,split),id=value.slice(split+1);setEntries(current=>({...current,[childId]:mode==="MEMBERSHIP"?{mode:"MEMBERSHIP",membershipId:id}:{mode:"ADMISSION",admissionTypeId:id}}));}
+  const limitIssue=selected.some(child=>{const entry=entries[child.id];if(entry.mode!=="MEMBERSHIP")return false;const member=child.memberships.find(m=>m.id===entry.membershipId);return member?.remaining!==null&&member?.remaining!==undefined&&Object.values(entries).filter(e=>e.mode==="MEMBERSHIP"&&e.membershipId===entry.membershipId).length>member.remaining;});
+  const ready=!!guardian&&selected.length>0&&selected.length<=10&&!limitIssue&&selected.every(child=>{const entry=entries[child.id];return !child.activeVisit&&!!child.waiver&&(entry.mode==="MEMBERSHIP"?child.memberships.some(m=>m.id===entry.membershipId&&m.eligible):overview?.admissions.some(a=>a.id===entry.admissionTypeId));})&&(!hasAdmission||admissionAcknowledged);
+  async function checkIn(event:FormEvent){event.preventDefault();if(!family||!ready)return;setBusy(true);setError("");setNotice("");if(!requestId.current)requestId.current=crypto.randomUUID();try{
+    const items=selected.map(child=>{const entry=entries[child.id];return entry.mode==="MEMBERSHIP"?{childId:child.id,...entry}:{childId:child.id,...entry,listedPrice:overview!.admissions.find(a=>a.id===entry.admissionTypeId)!.price};});
+    const result=await post({action:"check-in",requestId:requestId.current,familyId:family.id,guardianParentId:guardianId,entries:items,admissionAcknowledged});
+    setEntries({});setAdmissionAcknowledged(false);requestId.current="";setNotice(result.replayed?"This check-in request was already saved.":`${result.visitIds.length} ${result.visitIds.length===1?"child checked":"children checked"} in.${hasAdmission?" Admission payment was not processed or recorded here.":" Membership use recorded."}`);await refresh();
+  }catch(error){setError(error instanceof Error?error.message:"Unable to check in.");setAdmissionAcknowledged(false);try{await refresh();}catch{}}finally{setBusy(false);}}
+  async function checkOut(visitId:string){setBusy(true);setError("");setNotice("");try{const result=await post({action:"check-out",visitIds:[visitId]});setNotice(result.checkedOut?"Child checked out. The visit is saved in family history.":"This visit was already checked out.");await refresh();}catch(error){setError(error instanceof Error?error.message:"Unable to check out.");}finally{setBusy(false);}}
+  async function signWaiver(signing:SigningSubmission){if(!family||!guardian)return;setBusy(true);try{await post({familyId:family.id,guardianParentId:guardian.id,childIds:selected.map(c=>c.id),signing},"/api/check-in/waiver");setWaiverOpen(false);setNotice("Signed waiver saved separately for each covered child.");await loadFamily(family.id);}finally{setBusy(false);}}
+  const date=(value:string)=>new Date(value).toLocaleString("en-US",{timeZone:overview?.business.timezone??"America/New_York",dateStyle:"medium",timeStyle:"short"});
+  return <Shell name={overview?.business.name??"PlayFlow"}>
+    <header className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-3xl font-semibold">Playtime check-in</h2><p className="mt-2 text-sm text-gray-600">Saved families, signed child waivers, and real open-play visits.</p></div><button disabled={busy} onClick={()=>{setError("");refresh().catch(error=>setError(error.message));}} className="rounded-lg border bg-white px-4 py-3 text-sm font-semibold">Refresh</button></header>
+    {error&&<p role="alert" className="mb-5 rounded-xl bg-white p-4 text-red-700">{error}</p>}{notice&&<p role="status" className="mb-5 rounded-xl bg-white p-4 text-green-800">{notice}</p>}{loading&&!overview&&<p>Loading saved visits…</p>}
+    <div className="grid items-start gap-5 xl:grid-cols-[minmax(250px,0.8fr)_minmax(0,1.6fr)]">
+      <section className="space-y-4 rounded-xl bg-white p-5"><h3 className="text-lg font-semibold">Find a family</h3><label className="block text-sm">Parent or child name, email, or last four phone digits<input value={query} maxLength={254} onChange={e=>{setQuery(e.target.value);setResults([]);setSearching(e.target.value.trim().length>=2);}} className="mt-2 block w-full rounded-lg border p-3" placeholder="Search saved families"/></label>{searching&&<p className="text-sm">Searching…</p>}{!searching&&query.trim().length>=2&&!results.length&&<p className="text-sm text-gray-600">No active families found.</p>}{results.map(result=><button key={result.id} disabled={busy} onClick={()=>chooseFamily(result.id)} className="block w-full rounded-lg border p-4 text-left hover:bg-gray-50 disabled:opacity-40"><strong>{result.name}</strong>{result.parents.map((parent,index)=><span key={index} className="mt-1 block break-words text-sm text-gray-600">{parent.firstName} {parent.lastName}{parent.phone?` · ${parent.phone}`:""}</span>)}<span className="mt-1 block text-xs">{result._count.children} active children</span></button>)}{results.length===20&&<p className="text-xs text-gray-600">First 20 matches shown. Narrow your search if needed.</p>}<button disabled={busy||!overview} onClick={()=>setIntake("new")} className={button}>New walk-in family</button></section>
+      <section className="space-y-4 rounded-xl bg-white p-5">{familyLoading?<p>Loading family…</p>:!family?<p className="text-gray-600">Select a family or add a new walk-in to begin.</p>:<><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-xl font-semibold">{family.name}</h3><button disabled={busy} onClick={()=>setIntake("child")} className="text-sm underline">Add a child</button></div><label className="block text-sm font-semibold">Attending guardian<select disabled={busy} value={guardianId} onChange={e=>{draftChanged();setGuardianId(e.target.value);}} className="mt-2 block w-full rounded-lg border p-3"><option value="">Choose the guardian</option>{family.parents.map(parent=><option key={parent.id} value={parent.id}>{parent.firstName} {parent.lastName}</option>)}</select></label>{guardian&&<p className="break-words text-sm text-gray-600">{guardian.phone??"No phone recorded"}{guardian.email?` · ${guardian.email}`:""}</p>}<form onSubmit={checkIn} className="space-y-4">{!family.children.length&&<p>No active children. Add a child to continue.</p>}{family.children.map(child=>{const entry=entries[child.id];return <article key={child.id} className="space-y-3 rounded-lg border p-4"><label className="flex items-start gap-3"><input type="checkbox" className="mt-1" checked={!!entry} disabled={busy||!!child.activeVisit&&!entry} onChange={e=>toggleChild(child,e.target.checked)}/><span><strong>{child.firstName} {child.lastName}</strong>{child.dateOfBirth&&<span className="block text-sm text-gray-600">Born {new Date(child.dateOfBirth).toLocaleDateString("en-US",{timeZone:"UTC"})}</span>}</span></label>{child.allergies&&<p className="whitespace-pre-wrap break-words text-sm text-amber-900"><strong>Allergies:</strong> {child.allergies}</p>}{child.medicalNotes&&<p className="whitespace-pre-wrap break-words text-sm"><strong>Medical / accessibility:</strong> {child.medicalNotes}</p>}<p className={`text-sm font-semibold ${child.waiver?"text-green-800":"text-red-700"}`}>{child.waiver?`Signed waiver on file · ${date(child.waiver.signedAt)}`:"Signed liability waiver needed"}</p>{child.activeVisit?<div className="flex flex-wrap items-center justify-between gap-3 text-sm"><p>Inside since {date(child.activeVisit.checkedInAt)} · {child.activeVisit.visitType}</p><button type="button" disabled={busy} onClick={()=>checkOut(child.activeVisit!.id)} className="rounded-lg border px-4 py-2 font-semibold">Check out</button></div>:entry&&<><label className="block text-sm font-semibold">Admission or membership<select disabled={busy} value={entry.mode==="MEMBERSHIP"?`MEMBERSHIP:${entry.membershipId}`:`ADMISSION:${entry.admissionTypeId}`} onChange={e=>chooseEntry(child.id,e.target.value)} className="mt-2 block w-full rounded-lg border p-3"><option value="ADMISSION:">Choose an option</option>{child.memberships.map(member=><option key={member.id} disabled={!member.eligible} value={`MEMBERSHIP:${member.id}`}>{member.name} — {member.eligible?(member.remaining===null?"unlimited":`${member.remaining} visits left`):member.reason}</option>)}{overview?.admissions.map(admission=><option key={admission.id} value={`ADMISSION:${admission.id}`}>{admission.name} — {money(admission.price)} listed price</option>)}</select></label>{!overview?.admissions.length&&!child.memberships.some(m=>m.eligible)&&<p className="text-sm text-red-700">No usable membership or active admission type. Configure admissions in Company Settings.</p>}</>}</article>;})}
+        {!!selected.length&&<section className="space-y-4 rounded-lg bg-gray-50 p-4"><p className="text-sm font-semibold">{selected.length} children selected</p><button type="button" disabled={busy} onClick={()=>{setEntries({});draftChanged();}} className="text-sm underline">Clear selection</button>{selected.some(c=>!c.waiver)&&<p className="text-sm text-red-700">Complete the selected children’s liability waivers before check-in.</p>}<button type="button" disabled={busy||!guardian||!overview?.formsAvailable||selected.length>10} onClick={()=>{setWaiverEmail(guardian?.email??"");setWaiverOpen(true);}} className="block rounded-lg border bg-white px-4 py-3 text-sm font-semibold disabled:opacity-40">Open waiver for guardian</button>{hasAdmission&&<label className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm"><input type="checkbox" checked={admissionAcknowledged} disabled={busy} onChange={e=>setAdmissionAcknowledged(e.target.checked)} className="mt-1"/><span>Admission amounts shown are listed prices. Taxes, fees and payment are handled separately. Check-in will not charge a card or record a payment.</span></label>}{limitIssue&&<p className="text-sm text-red-700">The selected children exceed the remaining visits on a shared membership. Choose admission for additional children.</p>}<button disabled={busy||!ready} className={button}>{busy?"Saving…":`Check in ${selected.length} ${selected.length===1?"child":"children"}`}</button></section>}
+      </form></>}</section>
+    </div>
+    <section className="mt-5 space-y-4 rounded-xl bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-xl font-semibold">Open play inside: {overview?.insideCount??"—"}</h3><p className="text-xs text-gray-600">Party attendance is managed separately.</p></div>{!overview?.visits.length&&<p className="text-sm text-gray-600">{overview?"No active open-play visits on this page.":"Visit data unavailable."}</p>}{overview?.visits.map(visit=><article key={visit.id} className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4"><div><strong>{visit.child.firstName} {visit.child.lastName}</strong><p className="text-sm">{visit.family.name} · {visit.visitType}</p><p className="mt-1 text-xs text-gray-600">In: {date(visit.checkedInAt)}{visit.guardianParent?` · ${visit.guardianParent.firstName} ${visit.guardianParent.lastName}`:""}</p>{visit.admissionSnapshot?.mode==="ADMISSION"&&<p className="mt-1 text-xs text-amber-900">Admission payment not recorded in PlayFlow.</p>}</div><div className="flex gap-4"><button disabled={busy} onClick={()=>chooseFamily(visit.familyId)} className="text-sm underline">Open family</button><button disabled={busy} onClick={()=>checkOut(visit.id)} className={button}>Check out</button></div></article>)}{overview&&overview.insideCount>overview.pageSize&&<div className="flex items-center justify-between text-sm"><button disabled={busy||page===1} className="underline disabled:opacity-40" onClick={()=>setPage(n=>n-1)}>Previous</button><span>Page {page}</span><button disabled={busy||page*overview.pageSize>=overview.insideCount} className="underline disabled:opacity-40" onClick={()=>setPage(n=>n+1)}>Next</button></div>}</section>
+    {intake&&<IntakeForm familyId={intake==="child"?family?.id:undefined} defaultLastName={intake==="child"?family?.parents[0]?.lastName:undefined} onClose={()=>setIntake(null)} onSaved={async id=>{await chooseFamily(id);setNotice("Family saved. Review children and have the guardian sign any missing waivers.");}}/>}
+    {waiverOpen&&family&&guardian&&<SigningDialog title="Guardian liability waiver" busy={busy} onClose={()=>setWaiverOpen(false)}><div className="space-y-4"><p className="rounded-lg bg-amber-50 p-4 text-sm font-semibold">The attending guardian must read and sign this form. Staff must not sign on their behalf.</p><label className="block text-sm font-semibold">Guardian email<input type="email" value={waiverEmail} disabled={busy||!!guardian.email} onChange={e=>setWaiverEmail(e.target.value)} maxLength={254} className="mt-2 block w-full rounded-lg border p-3"/></label><LegalSigningForm key={`${family.id}-${guardian.id}-${selected.map(c=>c.id).join(",")}`} scrollTerms={false} kind="LIABILITY" signerName={`${guardian.firstName} ${guardian.lastName}`} signerEmail={waiverEmail} onSign={signWaiver} childrenSummary={<p className="text-sm font-semibold">Children covered: {selected.map(c=>`${c.firstName} ${c.lastName}`).join(", ")}</p>}/></div></SigningDialog>}
+  </Shell>;
 }

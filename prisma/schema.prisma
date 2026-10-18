@@ -166,6 +166,8 @@ model CommerceSettings {
 }
 
 model Family {
+  intakeRequestId String?
+  intakeRequestHash String?
   id        String        @id @default(cuid())
   tenantId  String
   name      String
@@ -185,6 +187,7 @@ model Family {
 
   @@index([tenantId])
   @@index([name])
+  @@unique([tenantId, intakeRequestId])
 }
 
 model Parent {
@@ -216,6 +219,7 @@ model Parent {
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
   waivers Waiver[]
   parties Party[]
+  guardianVisits Visit[] @relation("VisitGuardian")
 
   @@unique([tenantId, authUserId])
   @@unique([tenantId, legacyWixId])
@@ -229,6 +233,7 @@ model Parent {
 }
 
 model Child {
+  intakeRequestId String?
   id           String   @id @default(cuid())
   tenantId     String
   legacyWixId String?
@@ -251,6 +256,7 @@ model Child {
   partyGuests PartyGuest[]
 
   @@unique([tenantId, legacyWixId])
+  @@unique([tenantId, intakeRequestId])
   @@index([tenantId])
   @@index([familyId])
   @@index([firstName])
@@ -258,6 +264,19 @@ model Child {
 }
 
 model Visit {
+  requestId String?
+  requestHash String?
+  guardianParentId String?
+  membershipId String?
+  waiverChildId String?
+  admissionSnapshot Json?
+  checkInStaffId String?
+  checkInStaffName String?
+  checkOutStaffId String?
+  checkOutStaffName String?
+  guardianParent Parent? @relation("VisitGuardian", fields:[guardianParentId], references:[id], onDelete:Restrict)
+  membership Membership? @relation(fields:[membershipId], references:[id], onDelete:Restrict)
+  waiverChild WaiverChild? @relation(fields:[waiverChildId], references:[id], onDelete:Restrict)
   id           String      @id @default(cuid())
   tenantId     String
   familyId     String
@@ -282,6 +301,10 @@ model Visit {
   @@index([checkedInAt])
   @@index([status])
   @@index([admissionTypeId])
+  @@index([membershipId])
+  @@index([tenantId, requestId])
+  @@unique([tenantId, childId, requestId])
+  // A migration adds a partial unique index for one active visit per tenant/child.
 }
 
 model AdmissionType {
@@ -388,6 +411,7 @@ model Membership {
   child          Child?          @relation(fields: [childId], references: [id], onDelete: SetNull)
   membershipPlan MembershipPlan? @relation(fields: [membershipPlanId], references: [id], onDelete: SetNull)
   payments       MembershipPayment[]
+  visits Visit[]
 
   @@index([tenantId])
   @@index([familyId])
@@ -470,6 +494,7 @@ model WaiverChild {
   childNameSnapshot String?
   dateOfBirthSnapshot DateTime?
   partyGuests PartyGuest[]
+  visits Visit[]
   childId  String
 
   waiver Waiver @relation(fields: [waiverId], references: [id], onDelete: Cascade)

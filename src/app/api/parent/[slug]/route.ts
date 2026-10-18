@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getParentContext, withParent } from "@/lib/parent/access";
-import { FormError, validateSigning, saveSignedForm, signingHash } from "@/lib/waivers/signing";
+import { FormError, validateSigning, saveSignedForm, signingHash, attachUpcomingCoverage } from "@/lib/waivers/signing";
 import { legalForm } from "@/lib/waivers/forms";
 type Params = {params: Promise<{slug: string}>};
 async function handleGET(request: Request, context: Params) {
@@ -77,9 +77,7 @@ async function handlePOST(request: Request, context: Params) {
     const party=partyId?await tx.party.findFirst({where:{id:partyId,tenantId:tenant.id,familyId:parent.familyId,primaryParentId:parent.id,status:{notIn:["CANCELLED","COMPLETED"]}}}):null;
     if(partyId&&!party)throw new FormError("This booking is not available to this parent.",404);
     const waiver=await saveSignedForm(tx,{tenantId:tenant.id,familyId:parent.familyId,parentId:parent.id,kind,signing,validityDays:tenant.waiverValidityDays,children,partyId,eventSnapshot:party?{title:party.title,startTime:party.startTime.toISOString(),endTime:party.endTime.toISOString(),depositAmount:Number(party.depositAmount??0)}:undefined});
-    if(kind==="LIABILITY")for(const coverage of waiver.children){
-      await tx.partyGuest.updateMany({where:{tenantId:tenant.id,childId:coverage.childId,status:"EXPECTED",rsvpStatus:{not:"DECLINED"},party:{tenantId:tenant.id,status:{notIn:["CANCELLED","COMPLETED"]},endTime:{gt:new Date()}}},data:{waiverChildId:coverage.id,waiverStatus:"SIGNED",waiverSignedAt:coverage.signedAt}});
-    }
+    if(kind==="LIABILITY")await attachUpcomingCoverage(tx,tenant.id,waiver.children);
     return{saved:true,waiverId:waiver.id};
   },{maxWait:10000,timeout:15000});
   return NextResponse.json(result);
