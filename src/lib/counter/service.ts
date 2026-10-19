@@ -101,7 +101,7 @@ export async function billAdmissions(tx: DB, staff: VisitStaff, input: Record<st
         throw new FormError("A selected visit changed. Refresh before billing.", 409);
     return { saleId: sale.id, replayed: false };
 }
-export async function recordCounterPayment(tx: DB, staff: VisitStaff, input: Record<string, unknown>) {
+export async function recordCounterPayment(tx: DB, staff: VisitStaff, input: Record<string, unknown>, groupFingerprint?: string) {
     const saleId = recordId(input.saleId, "a bill"), requestId = visitRequestId(input.requestId);
     if (!Number.isSafeInteger(input.amountCents) || Number(input.amountCents) <= 0 || Number(input.amountCents) > 100000000)
         throw new FormError("Enter a valid payment amount.");
@@ -111,7 +111,7 @@ export async function recordCounterPayment(tx: DB, staff: VisitStaff, input: Rec
         throw new FormError("Notes must be 2,000 characters or fewer.");
     if (input.collectedAcknowledged !== true)
         throw new FormError("Confirm that this payment has already been collected.");
-    const notes = typeof input.notes === "string" ? input.notes.trim() || null : null, amountCents = Number(input.amountCents), hash = signingHash({ saleId, amountCents, method: input.method, notes });
+    const notes = typeof input.notes === "string" ? input.notes.trim() || null : null, amountCents = Number(input.amountCents), hash = signingHash({ saleId, amountCents, method: input.method, notes, ...(groupFingerprint ? {groupFingerprint} : {}) });
     await lockVisits(tx, staff.tenantId);
     const sale = await tx.counterSale.findFirst({ where: { id: saleId, tenantId: staff.tenantId }, include: { payments: true, membership: true } });
     if (!sale)
@@ -167,4 +167,52 @@ export async function voidCounterSale(tx: DB, staff: VisitStaff, input: Record<s
     if (sale.membershipId)
         await tx.membership.update({ where: { id: sale.membershipId, tenantId: staff.tenantId, familyId: sale.familyId, status: "PENDING" }, data: { status: "CANCELLED", cancelledAt: new Date() } });
     return { saleId, replayed: false };
+}
+
+
+// One externally collected amount can settle several existing family bills. Each
+// allocation retains its bill linkage; the whole collection commits or rolls back.
+export async function recordCheckoutPayment(tx: DB, staff: VisitStaff, input: Record<string, unknown>) {
+    const familyId = recordId(input.familyId, "a family"), requestId = visitRequestId(input.requestId);
+    if (!Array.isArray(input.bills) || !input.bills.length || input.bills.length > 20)
+        throw new FormError("Choose one to twenty bills for this checkout.");
+    const bills = input.bills.map(value => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) throw new FormError("Choose valid bills.");
+        const item = value as Record<string, unknown>;
+        if (!Number.isSafeInteger(item.dueCents) || Number(item.dueCents) <= 0) throw new FormError("Review the remaining bill balances.");
+        return {id:recordId(item.id,"a bill"),dueCents:Number(item.dueCents)};
+    }).sort((a,b)=>a.id.localeCompare(b.id));
+    if (new Set(bills.map(b=>b.id)).size !== bills.length) throw new FormError("Select each bill only once.");
+    if (!Number.isSafeInteger(input.amountCents) || Number(input.amountCents)<=0 || Number(input.amountCents)>100000000) throw new FormError("Enter a valid payment amount.");
+    if (input.collectedAcknowledged !== true) throw new FormError("Confirm that this payment has already been collected.");
+    if (typeof input.method!=="string" || !["cash","card","other"].includes(input.method)) throw new FormError("Choose a supported payment method.");
+    if (input.notes!=null && (typeof input.notes!=="string" || input.notes.length>2000)) throw new FormError("Notes must be 2,000 characters or fewer.");
+    const notes=typeof input.notes==="string"?input.notes.trim()||null:null, amount=Number(input.amountCents);
+    const fingerprint=signingHash({familyId,bills,amount,method:input.method,notes});
+    const requestIds=Array.from({length:20},(_,index)=>`checkout-${signingHash({requestId,index})}`);
+    await lockVisits(tx,staff.tenantId);
+    const sales=await tx.counterSale.findMany({where:{tenantId:staff.tenantId,familyId,id:{in:bills.map(b=>b.id)}},include:{payments:true}});
+    if(sales.length!==bills.length) throw new FormError("One or more bills were not found in this family.",404);
+    const existing=await tx.counterPayment.findMany({where:{tenantId:staff.tenantId,requestId:{in:requestIds}}});
+    if(existing.length){
+        if(existing.reduce((sum,p)=>sum+p.amountCents,0)!==amount || existing.some(p=>p.requestHash!==signingHash({saleId:p.saleId,amountCents:p.amountCents,method:input.method,notes,groupFingerprint:fingerprint})))
+            throw new FormError("This checkout payment already saved different details. Refresh before starting another.",409);
+        return {saleIds:bills.map(b=>b.id),paymentIds:existing.map(p=>p.id),replayed:true};
+    }
+    for(const bill of bills){
+        const sale=sales.find(s=>s.id===bill.id)!;
+        const due=sale.totalCents-sale.payments.reduce((sum,p)=>sum+p.amountCents,0);
+        if(sale.status!=="OPEN" || due!==bill.dueCents) throw new FormError("A bill balance changed. Refresh and review the checkout total.",409);
+    }
+    const total=bills.reduce((sum,b)=>sum+b.dueCents,0);
+    if(!Number.isSafeInteger(total) || amount>total) throw new FormError("Payment exceeds the checkout balance.",409);
+    const settings=await settingsFor(tx,staff.tenantId);
+    if(!settings.checkoutRules.allowPartialPayments && amount!==total) throw new FormError("Partial payments are disabled in Commerce Settings.");
+    let remaining=amount;const paymentIds:string[]=[];
+    for(const [index,bill] of bills.entries()){
+        const allocated=Math.min(remaining,bill.dueCents);if(!allocated)break;
+        const result=await recordCounterPayment(tx,staff,{saleId:bill.id,amountCents:allocated,method:input.method,notes,requestId:requestIds[index],collectedAcknowledged:true},fingerprint);
+        paymentIds.push(result.paymentId);remaining-=allocated;
+    }
+    return {saleIds:bills.map(b=>b.id),paymentIds,replayed:false};
 }

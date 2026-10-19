@@ -15,8 +15,8 @@ const db: any = {
     child: { findFirst: async ({ where }: any) => where.id === "child" && where.familyId === "family" && where.tenantId === "tenant" ? { id: "child", active: true } : null },
     commerceSettings: { findUnique: async () => settings },
     membershipPlan: { findFirst: async ({ where }: any) => plans.find(p => match(p, where)) ?? null, findMany: async () => plans },
-    counterSale: { findFirst: async ({ where, include }: any) => { const s = sales.find(s => match(s, where)); return s ? { ...s, ...(include ? { payments: payments.filter(p => p.saleId === s.id), membership: members.find(m => m.id === s.membershipId) ?? null } : {}) } : null; }, findMany: async () => sales.map(s => ({ ...s, payments: payments.filter(p => p.saleId === s.id) })), create: async ({ data }: any) => { const s = { id: `sale-${sales.length}`, createdAt: new Date(), ...data }; sales.push(s); return s; }, update: async ({ where, data }: any) => { const s = sales.find(s => match(s, where)); Object.assign(s, data); return s; } },
-    counterPayment: { findFirst: async ({ where }: any) => payments.find(p => match(p, where)) ?? null, create: async ({ data }: any) => { const p = { id: `pay-${payments.length}`, collectedAt: new Date(), ...data }; payments.push(p); return p; } },
+    counterSale: { findFirst: async ({ where, include }: any) => { const s = sales.find(s => match(s, where)); return s ? { ...s, ...(include ? { payments: payments.filter(p => p.saleId === s.id), membership: members.find(m => m.id === s.membershipId) ?? null } : {}) } : null; }, findMany: async ({where}:any={}) => sales.filter(s=>!where||match(s,where)).map(s => ({ ...s, payments: payments.filter(p => p.saleId === s.id) })), create: async ({ data }: any) => { const s = { id: `sale-${sales.length}`, createdAt: new Date(), ...data }; sales.push(s); return s; }, update: async ({ where, data }: any) => { const s = sales.find(s => match(s, where)); Object.assign(s, data); return s; } },
+    counterPayment: { findMany:async({where}:any)=>payments.filter(p=>match(p,where)), findFirst: async ({ where }: any) => payments.find(p => match(p, where)) ?? null, create: async ({ data }: any) => { const p = { id: `pay-${payments.length}`, collectedAt: new Date(), ...data }; payments.push(p); return p; } },
     visit: { findMany: async ({ where }: any) => visits.filter(v => match(v, where)), count: async ({ where }: any) => visits.filter(v => v.membershipId === where.membershipId && v.status !== "CANCELLED").length, updateMany: async ({ where, data }: any) => { let count = 0; visits.filter(v => match(v, where)).forEach(v => { Object.assign(v, data); count++; }); return { count }; } },
     membership: { create: async ({ data }: any) => { const m = { id: `member-${members.length}`, ...data }; members.push(m); return m; }, update: async ({ where, data }: any) => { if (failActivation)
             throw new Error("simulated write failure"); const m = members.find(m => match(m, where)); if (!m)
@@ -35,7 +35,7 @@ finally {
 } };
 mock.module("../src/lib/prisma.ts", { namedExports: { prisma: db } });
 mock.module("../src/lib/auth/server.ts", { namedExports: { getAuth: () => ({ getSession: async () => ({ data: user ? { user } : null, error: null }) }) } });
-const { billAdmissions, membershipQuote, enrollMembership, recordCounterPayment, voidCounterSale, memberEnd } = await import("../src/lib/counter/service");
+const { recordCheckoutPayment, billAdmissions, membershipQuote, enrollMembership, recordCounterPayment, voidCounterSale, memberEnd } = await import("../src/lib/counter/service");
 const { membershipUse } = await import("../src/lib/visits/service");
 const { GET, POST } = await import("../src/app/api/counter/route");
 const bill = (extra: any = {}) => ({ familyId: "family", visitIds: ["visit"], requestId: "bill-request-123456789", ...extra });
@@ -233,4 +233,43 @@ test("staff API rejects cross-site posts and foreign family access", async () =>
     const result = await POST(request({ action: "bill-admissions", ...bill() }));
     assert.equal(result.status, 200);
     assert.equal(sales.length, 1);
+});
+
+
+async function twoBills(){
+  await transaction(tx=>billAdmissions(tx,staff,bill()));
+  visits.push({...structuredClone(visits[0]),id:"second-visit",childId:"second-child",counterSaleId:null,child:{firstName:"Second",lastName:"Child"}});
+  await transaction(tx=>billAdmissions(tx,staff,bill({visitIds:["second-visit"],requestId:"second-bill-request-123456"})));
+}
+const checkout=(extra:any={})=>({familyId:"family",bills:[{id:"sale-0",dueCents:2000},{id:"sale-1",dueCents:2000}],amountCents:4000,method:"cash",notes:null,collectedAcknowledged:true,requestId:"checkout-request-123456",...extra});
+test("one checkout pays both siblings, retains bill links and replays exactly once",async()=>{
+  await twoBills();const result=await transaction(tx=>recordCheckoutPayment(tx,staff,checkout()));assert.equal(result.paymentIds.length,2);assert(sales.every(s=>s.status==="PAID"));assert.equal(payments.reduce((sum,p)=>sum+p.amountCents,0),4000);assert.deepEqual(payments.map(p=>p.saleId),["sale-0","sale-1"]);
+  const replay=await transaction(tx=>recordCheckoutPayment(tx,staff,checkout()));assert.equal(replay.replayed,true);assert.equal(payments.length,2);
+  await assert.rejects(transaction(tx=>recordCheckoutPayment(tx,staff,checkout({amountCents:3000}))),/different details/);
+});
+test("checkout rejects stale balances and foreign families without collecting anything",async()=>{
+  await twoBills();await assert.rejects(transaction(tx=>recordCheckoutPayment(tx,staff,checkout({bills:[{id:"sale-0",dueCents:1000},{id:"sale-1",dueCents:2000}],amountCents:3000}))),/balance changed/);
+  await assert.rejects(transaction(tx=>recordCheckoutPayment(tx,staff,checkout({familyId:"foreign"}))),/not found/);
+  await assert.rejects(transaction(tx=>recordCheckoutPayment(tx,{...staff,tenantId:"other"},checkout())),/not found/);assert.equal(payments.length,0);
+});
+test("partial family checkout allocates once and keeps the remaining sibling balance",async()=>{
+  await twoBills();await transaction(tx=>recordCheckoutPayment(tx,staff,checkout({amountCents:2500})));assert.equal(sales[0].status,"PAID");assert.equal(sales[1].status,"OPEN");assert.deepEqual(payments.map(p=>p.amountCents),[2000,500]);
+  assert.equal((await transaction(tx=>recordCheckoutPayment(tx,staff,checkout({amountCents:2500})))).replayed,true);assert.equal(payments.length,2);
+});
+test("failure on second membership rolls back first sibling's payment too",async()=>{
+  await transaction(tx=>billAdmissions(tx,staff,bill()));await enroll();failActivation=true;
+  await assert.rejects(transaction(tx=>recordCheckoutPayment(tx,staff,checkout())),/simulated write failure/);assert.equal(payments.length,0);assert(sales.every(s=>s.status==="OPEN"));assert.equal(members[0].status,"PENDING");
+});
+test("family checkout honors full-payment and required-note rules",async()=>{
+  await twoBills();settings.checkoutRules.allowPartialPayments=false;
+  await assert.rejects(transaction(tx=>recordCheckoutPayment(tx,staff,checkout({amountCents:2500}))),/Partial payments/);
+  await assert.rejects(transaction(tx=>recordCheckoutPayment(tx,staff,checkout({method:"other"}))),/require a note/);assert.equal(payments.length,0);
+  await transaction(tx=>recordCheckoutPayment(tx,staff,checkout()));assert(sales.every(s=>s.status==="PAID"));
+});
+test("concurrent multi-child payment attempts cannot overcollect",async()=>{
+  await twoBills();const results=await Promise.allSettled([transaction(tx=>recordCheckoutPayment(tx,staff,checkout())),transaction(tx=>recordCheckoutPayment(tx,staff,checkout({requestId:"other-checkout-request-123456"})))]);assert.equal(results.filter(r=>r.status==="fulfilled").length,1);assert.equal(payments.reduce((sum,p)=>sum+p.amountCents,0),4000);
+});
+test("checkout API returns all sibling receipts and rejects duplicate bill selections",async()=>{
+  await twoBills();const response=await POST(request({action:"checkout-payment",...checkout()}));assert.equal(response.status,200);const result=await response.json();assert.equal(result.receipts.length,2);assert(result.receipts.every((s:any)=>s.status==="PAID"));
+  await assert.rejects(transaction(tx=>recordCheckoutPayment(tx,staff,checkout({bills:[{id:"sale-0",dueCents:2000},{id:"sale-0",dueCents:2000}]}))),/each bill only once/);
 });

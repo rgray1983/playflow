@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getStaffContext, withStaff } from "@/lib/auth/staff";
 import { FormError } from "@/lib/waivers/signing";
 import { normalizeCommerceSettings } from "@/lib/commerce-settings";
-import { billAdmissions, enrollMembership, membershipQuote, recordCounterPayment, voidCounterSale } from "@/lib/counter/service";
+import {receiptSelect} from "@/lib/counter/select";
+import { recordCheckoutPayment, billAdmissions, enrollMembership, membershipQuote, recordCounterPayment, voidCounterSale } from "@/lib/counter/service";
 import { recordId } from "@/lib/visits/service";
 function failure(error: unknown) { if (error instanceof FormError)
     return NextResponse.json({ error: error.message }, { status: error.status }); if (error && typeof error === "object" && "code" in error && error.code === "P2002")
@@ -50,6 +51,11 @@ async function handlePOST(request: Request) {
                     return { quote: result.quote, quoteHash: result.quoteHash, terms: result.terms };
                 }
                 case "enroll": return enrollMembership(tx, staff, body);
+                case "checkout-payment": {
+                    const result=await recordCheckoutPayment(tx,staff,body);
+                    const receipts=await tx.counterSale.findMany({where:{tenantId:staff.tenantId,familyId:body.familyId,id:{in:result.saleIds}},select:receiptSelect});
+                    return {...result,receipts};
+                }
                 case "payment": return recordCounterPayment(tx, staff, body);
                 case "void": return voidCounterSale(tx, staff, body);
                 default: throw new FormError("Choose a valid counter action.");
