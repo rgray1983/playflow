@@ -123,6 +123,7 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  counterProducts CounterProduct[]
   counterSales CounterSale[]
   counterPayments CounterPayment[]
   families          Family[]
@@ -805,4 +806,18 @@ model CounterPayment {
   sale CounterSale @relation(fields:[saleId],references:[id],onDelete:Restrict)
   @@unique([tenantId, requestId])
   @@index([saleId, collectedAt])
+}
+
+model CounterProduct {
+  id String @id @default(cuid())
+  tenantId String
+  name String
+  category String
+  priceCents Int
+  active Boolean @default(true)
+  updatedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
+  @@index([tenantId, active, category])
 }

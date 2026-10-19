@@ -25,7 +25,7 @@ learn from real-world use.
 -   Inspect Wix CMS exports and implement a repeatable migration with source IDs.
 -   Add blackout dates, separate rooms if needed, and guarded rescheduling.
 -   Replace demo dashboard totals with live business data.
--   Extend the real family POS to retail/concessions and gift cards; admission/member payment recording is now live.
+-   Review restored product/admission prices and complete POS acceptance testing; snacks, retail, custom charges and family payment recording are connected.
 -   Reports Dashboard
 -   Email & SMS automation
 -   Staff assignments for parties
@@ -38,7 +38,7 @@ learn from real-world use.
 -   Recurring membership billing and self-service purchases
 -   Retail / concessions
 -   Inventory tracking
--   Gift cards
+-   Gift cards (deferred; not needed now)
 -   Store credit
 
 ------------------------------------------------------------------------

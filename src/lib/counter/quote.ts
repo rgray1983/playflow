@@ -49,3 +49,15 @@ export function quoteCounter(lines: QuoteLine[], profile: string, settings: Comm
         throw new FormError("Sale total is outside the supported range.");
     return { currency: "USD", lines, subtotalCents: subtotal, taxCents, feeCents, totalCents, includedTaxCents: included ? itemTax + fees.reduce((s, f) => s + f.taxCents, 0) : 0, fees, taxRate: rate, pricesIncludeTax: included, profile };
 }
+
+export function quoteMixedCounter(lines:(QuoteLine & {profile:string})[],settings:CommerceSettingsPayload):CounterQuote{
+  const base=quoteCounter(lines,"retail",settings);
+  const withoutFees={...settings,feeRules:{enabled:false,fees:[]}};
+  const baseItems=quoteCounter(lines,"retail",withoutFees);
+  const groups=[...new Set(lines.map(l=>l.profile))].map(profile=>quoteCounter(lines.filter(l=>l.profile===profile),profile,withoutFees));
+  const taxCents=base.taxCents-baseItems.taxCents+groups.reduce((sum,q)=>sum+q.taxCents,0);
+  const includedTaxCents=base.includedTaxCents-baseItems.includedTaxCents+groups.reduce((sum,q)=>sum+q.includedTaxCents,0);
+  const totalCents=base.subtotalCents+base.feeCents+taxCents;
+  if(!Number.isSafeInteger(totalCents)||totalCents>100000000)throw new FormError("Sale total is outside the supported range.");
+  return {...base,profile:"mixed",taxRate:0,taxCents,includedTaxCents,totalCents};
+}

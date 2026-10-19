@@ -60,3 +60,15 @@ The register now keeps a cart of selected family bills rather than replacing one
 One Pay action records the collected amount across up to 20 selected bills atomically under the tenant lock. Allocations retain their original bill/family links and use one replay fingerprint covering the full selection, reviewed balances, amount and method. A stale balance requires refresh/review; any failed allocation rolls back the whole collection, including membership activation. Partial payments allocate to bills in stable bill-ID order. The combined printable checkout summary includes all selected children's lines, original bill references and payments; individual bill records remain in parent/staff history.
 
 Validation: 201 tests pass, including sibling cart accumulation, removal and totals, combined receipt references, full and partial multi-bill collection, retry/concurrency protection, stale/foreign bill rejection, and rollback when the second bill's membership activation fails. No schema migration is required for this fix.
+
+## Snacks, retail and custom charges restored (gift cards deferred)
+
+Snacks & Retail is back in the register with saved catalog products and +/− quantity controls. The four original development items (Bottled Water $2, Juice Box $2.50, Chips $1.75, Grip Socks $4) are restored as starter products using their original demo prices. An owner/manager can add, edit or disable items using Manage products; front desk staff can sell active items but cannot change catalog prices. Product changes use optimistic timestamps and never rewrite saved sale snapshots.
+
+Custom Charge is restored with a description, onscreen amount keypad, amount presets and a tax category drawn from the existing Retail/Services/Admissions profiles. Custom charges must be positive; no refund/negative-payment shortcut is introduced. Gift cards remain absent.
+
+Product/custom items stay in a draft cart with a server-calculated quote until Pay. The server reloads active catalog prices and checks the reviewed quote before saving one product/custom bill; the existing family checkout then records payment with any selected child admission or membership bills. Quantities, names and prices are snapshotted on the bill. Configured fees apply once to the product/custom bill, including mixed tax categories. Existing admission bills are not repriced. No inventory depletion, Square charge or gift-card balance is implied.
+
+Migration `20261019174500_counter_products` adds CounterProduct, widens the sale classification check to RETAIL/CUSTOM, and seeds only the original development tenant's four starter products. No existing sale, family, visit or waiver data is removed or rewritten. Applied on the original database branch.
+
+Validation: 209 automated tests pass, including catalog authorization, price tamper/stale-price rejection, disabled/foreign products, quantity/custom amount validation, mixed taxes/fees, retail plus sibling admission checkout, and zero-total product sales. Product prices should be reviewed before real use.

@@ -4,6 +4,7 @@ import { defaultCommerceSettings, normalizeCommerceSettings } from "../src/lib/c
 import { quoteCounter } from "../src/lib/counter/quote";
 import { receiptHTML } from "../src/lib/counter/receipt";
 import { receiptSelect } from "../src/lib/counter/select";
+let catalog:any[];
 let sales: any[], payments: any[], visits: any[], members: any[], plans: any[], settings: any, user: any, employee: any, failActivation = false;
 const staff = { tenantId: "tenant", employeeId: "staff", name: "Test Staff" };
 const tenant = { id: "tenant", name: "Test Venue", slug: "palmetto-playhouse", timezone: "America/New_York", phone: null, email: null, address1: null, city: null, state: null, zip: null };
@@ -14,6 +15,7 @@ const db: any = {
     family: { findFirst: async ({ where }: any) => where.id === "family" && where.tenantId === "tenant" ? { id: "family", status: "ACTIVE" } : null },
     child: { findFirst: async ({ where }: any) => where.id === "child" && where.familyId === "family" && where.tenantId === "tenant" ? { id: "child", active: true } : null },
     commerceSettings: { findUnique: async () => settings },
+    counterProduct:{findFirst:async({where}:any)=>catalog.find(p=>match(p,where))??null,findMany:async({where}:any)=>catalog.filter(p=>match(p,where)),create:async({data}:any)=>{const row={createdAt:new Date(),updatedAt:new Date(),...data};catalog.push(row);return row;},update:async({where,data}:any)=>{const row=catalog.find(p=>match(p,where));if(!row)throw new Error("not found");Object.assign(row,data,{updatedAt:new Date()});return row;}},
     membershipPlan: { findFirst: async ({ where }: any) => plans.find(p => match(p, where)) ?? null, findMany: async () => plans },
     counterSale: { findFirst: async ({ where, include }: any) => { const s = sales.find(s => match(s, where)); return s ? { ...s, ...(include ? { payments: payments.filter(p => p.saleId === s.id), membership: members.find(m => m.id === s.membershipId) ?? null } : {}) } : null; }, findMany: async ({where}:any={}) => sales.filter(s=>!where||match(s,where)).map(s => ({ ...s, payments: payments.filter(p => p.saleId === s.id) })), create: async ({ data }: any) => { const s = { id: `sale-${sales.length}`, createdAt: new Date(), ...data }; sales.push(s); return s; }, update: async ({ where, data }: any) => { const s = sales.find(s => match(s, where)); Object.assign(s, data); return s; } },
     counterPayment: { findMany:async({where}:any)=>payments.filter(p=>match(p,where)), findFirst: async ({ where }: any) => payments.find(p => match(p, where)) ?? null, create: async ({ data }: any) => { const p = { id: `pay-${payments.length}`, collectedAt: new Date(), ...data }; payments.push(p); return p; } },
@@ -35,7 +37,9 @@ finally {
 } };
 mock.module("../src/lib/prisma.ts", { namedExports: { prisma: db } });
 mock.module("../src/lib/auth/server.ts", { namedExports: { getAuth: () => ({ getSession: async () => ({ data: user ? { user } : null, error: null }) }) } });
-const { recordCheckoutPayment, billAdmissions, membershipQuote, enrollMembership, recordCounterPayment, voidCounterSale, memberEnd } = await import("../src/lib/counter/service");
+const { createProductSale, recordCheckoutPayment, billAdmissions, membershipQuote, enrollMembership, recordCounterPayment, voidCounterSale, memberEnd } = await import("../src/lib/counter/service");
+const {productCartQuote,saveCounterProduct}=await import("../src/lib/counter/products");
+const {GET:catalogGET,POST:catalogPOST}=await import("../src/app/api/counter/catalog/route");
 const { membershipUse } = await import("../src/lib/visits/service");
 const { GET, POST } = await import("../src/app/api/counter/route");
 const bill = (extra: any = {}) => ({ familyId: "family", visitIds: ["visit"], requestId: "bill-request-123456789", ...extra });
@@ -45,6 +49,7 @@ async function enroll(extra: any = {}) { const prepared = await membershipQuote(
 const transaction = (f: (tx: any) => Promise<any>) => db.$transaction(f);
 const request = (body?: any, query = "") => new Request(`http://localhost/api/counter${query}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
 beforeEach(() => {
+    catalog=[{id:"water",tenantId:"tenant",name:"Bottled Water",category:"SNACK",priceCents:200,active:true,updatedBy:"staff",updatedAt:new Date("2026-10-19T12:00:00Z")},{id:"socks",tenantId:"tenant",name:"Grip Socks",category:"RETAIL",priceCents:400,active:true,updatedBy:"staff",updatedAt:new Date("2026-10-19T12:00:00Z")}];
     sales = [];
     payments = [];
     members = [];
@@ -272,4 +277,37 @@ test("concurrent multi-child payment attempts cannot overcollect",async()=>{
 test("checkout API returns all sibling receipts and rejects duplicate bill selections",async()=>{
   await twoBills();const response=await POST(request({action:"checkout-payment",...checkout()}));assert.equal(response.status,200);const result=await response.json();assert.equal(result.receipts.length,2);assert(result.receipts.every((s:any)=>s.status==="PAID"));
   await assert.rejects(transaction(tx=>recordCheckoutPayment(tx,staff,checkout({bills:[{id:"sale-0",dueCents:2000},{id:"sale-0",dueCents:2000}]}))),/each bill only once/);
+});
+
+
+const productCart=(extra:any={})=>({products:[{productId:"water",quantity:2}],custom:[],...extra});
+async function saveCart(extra:any={}){const input=productCart(extra),prepared=await productCartQuote(db,staff,input);return transaction(tx=>createProductSale(tx,staff,{...input,familyId:"family",requestId:"retail-cart-request-123456",quoteHash:prepared.quoteHash}));}
+test("snack quantities use server prices and save one replay-safe retail bill",async()=>{
+ const input=productCart({products:[{productId:"water",quantity:2,priceCents:1}]});const prepared=await productCartQuote(db,staff,input);assert.equal(prepared.quote.totalCents,400);
+ const body={...input,familyId:"family",requestId:"retail-cart-request-123456",quoteHash:prepared.quoteHash};await transaction(tx=>createProductSale(tx,staff,body));assert.equal(sales[0].kind,"RETAIL");assert.equal(sales[0].totalCents,400);assert.equal(sales[0].quoteSnapshot.lines[0].label,"2 × Bottled Water");assert.equal((await transaction(tx=>createProductSale(tx,staff,body))).replayed,true);assert.equal(sales.length,1);
+});
+test("custom charges and retail use their configured tax categories with fees once",async()=>{
+ settings.taxRules.enabled=true;settings.taxRules.defaultRate=5;Object.assign(settings.taxRules.profiles.find((p:any)=>p.key==="retail"),{taxable:true,rate:5});Object.assign(settings.taxRules.profiles.find((p:any)=>p.key==="admissions"),{taxable:true,rate:10});settings.feeRules={enabled:true,fees:[{id:"fee",label:"Fee",type:"flat",amount:2,taxable:true,enabled:true}]};
+ const prepared=await productCartQuote(db,staff,productCart({products:[{productId:"water",quantity:2},{productId:"socks",quantity:1}],custom:[{id:"custom-a",name:"Service",amountCents:1000,quantity:1,profile:"services"},{id:"custom-b",name:"Admission",amountCents:1200,quantity:1,profile:"admissions"}]}));assert.equal(prepared.quote.subtotalCents,3000);assert.equal(prepared.quote.feeCents,200);assert.equal(prepared.quote.taxCents,170);assert.equal(prepared.quote.totalCents,3370);
+});
+test("stale prices, inactive/foreign products and invalid custom charges cannot save sales",async()=>{
+ const prepared=await productCartQuote(db,staff,productCart());catalog[0].priceCents=250;await assert.rejects(transaction(tx=>createProductSale(tx,staff,{...productCart(),familyId:"family",requestId:"retail-cart-request-123456",quoteHash:prepared.quoteHash})),/changed/);
+ catalog[0].active=false;await assert.rejects(productCartQuote(db,staff,productCart()),/unavailable/);catalog[0].active=true;
+ await assert.rejects(productCartQuote(db,{...staff,tenantId:"foreign"},productCart()),/unavailable/);
+ for(const extra of [{products:[{productId:"water",quantity:0}]},{products:[{productId:"water",quantity:100}]},{products:[],custom:[{id:"x",name:"Bad",quantity:1,amountCents:-100,profile:"retail"}]},{products:[],custom:[{id:"x",name:"Bad",quantity:1,amountCents:100,profile:"anything"}]}])await assert.rejects(productCartQuote(db,staff,productCart(extra)));
+ assert.equal(sales.length,0);
+});
+test("retail and sibling admission bills can be paid together without altering visit evidence",async()=>{
+ await twoBills();await saveCart();const response=await POST(request({action:"checkout-payment",...checkout({bills:[{id:"sale-0",dueCents:2000},{id:"sale-1",dueCents:2000},{id:"sale-2",dueCents:400}],amountCents:4400})}));assert.equal(response.status,200);assert(sales.every(s=>s.status==="PAID"));assert.equal(payments.reduce((s,p)=>s+p.amountCents,0),4400);assert.equal(visits[0].admissionSnapshot.waiver.documentId,"original-proof");
+});
+test("custom-only and zero-total product sales create correct bill kinds without fictitious payments",async()=>{
+ await saveCart({products:[],custom:[{id:"custom-1",name:"Custom service",amountCents:500,quantity:1,profile:"services"}]});assert.equal(sales[0].kind,"CUSTOM");
+ catalog[0].priceCents=0;const prepared=await productCartQuote(db,staff,productCart());await transaction(tx=>createProductSale(tx,staff,{...productCart(),familyId:"family",requestId:"zero-price-cart-request-123456",quoteHash:prepared.quoteHash}));assert.equal(sales[1].status,"PAID");assert.equal(payments.length,0);
+});
+test("catalog writes require a manager and retain products through disabling",async()=>{
+ assert.equal((await catalogPOST(request({name:"New",priceCents:100,category:"SNACK",active:true,requestId:"new-product-request-123456"}))).status,403);
+ employee.accessRole="OWNER";const response=await catalogPOST(request({name:"New",priceCents:100,category:"SNACK",active:true,requestId:"new-product-request-123456"}));assert.equal(response.status,200);assert.equal(catalog.length,3);
+ const product=catalog[0];await transaction(tx=>saveCounterProduct(tx,staff,{id:product.id,updatedAt:product.updatedAt.toISOString(),name:product.name,priceCents:200,category:"SNACK",active:false}));assert.equal(catalog.length,3);assert.equal(catalog[0].active,false);
+ const view=await catalogGET();assert.equal(view.status,200);assert.equal((await view.json()).canManage,true);
+ await assert.rejects(transaction(tx=>saveCounterProduct(tx,staff,{id:product.id,updatedAt:"stale",name:product.name,priceCents:300,category:"SNACK",active:true})),/changed/);
 });

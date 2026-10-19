@@ -28,6 +28,7 @@ export type CounterReceipt = {
         staffName: string;
     }[];
 };
+export const saleLabel = (kind:string)=>kind==="BASKET"?"Family checkout":kind==="MEMBERSHIP"?"Membership / visit pack":kind==="RETAIL"?"Snacks & Retail":kind==="CUSTOM"?"Custom Charge":"Playtime admission";
 export const dollars = (cents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 export const paidCents = (sale: CounterReceipt) => sale.payments.reduce((sum, p) => sum + p.amountCents, 0);
 const escape = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));

@@ -3,8 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { getStaffContext, withStaff } from "@/lib/auth/staff";
 import { FormError } from "@/lib/waivers/signing";
 import { normalizeCommerceSettings } from "@/lib/commerce-settings";
+import {productCartQuote} from "@/lib/counter/products";
 import {receiptSelect} from "@/lib/counter/select";
-import { recordCheckoutPayment, billAdmissions, enrollMembership, membershipQuote, recordCounterPayment, voidCounterSale } from "@/lib/counter/service";
+import { createProductSale, recordCheckoutPayment, billAdmissions, enrollMembership, membershipQuote, recordCounterPayment, voidCounterSale } from "@/lib/counter/service";
 import { recordId } from "@/lib/visits/service";
 function failure(error: unknown) { if (error instanceof FormError)
     return NextResponse.json({ error: error.message }, { status: error.status }); if (error && typeof error === "object" && "code" in error && error.code === "P2002")
@@ -45,6 +46,12 @@ async function handlePOST(request: Request) {
         const staff = getStaffContext();
         const result = await prisma.$transaction(async (tx) => {
             switch (body.action) {
+                case "quote-cart":return productCartQuote(tx,staff,body);
+                case "create-cart":{
+                    const result=await createProductSale(tx,staff,body);
+                    const receipt=await tx.counterSale.findFirst({where:{id:result.saleId,tenantId:staff.tenantId},select:receiptSelect});
+                    return {...result,receipt};
+                }
                 case "bill-admissions": return billAdmissions(tx, staff, body);
                 case "quote-membership": {
                     const result = await membershipQuote(tx, staff, body);

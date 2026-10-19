@@ -1,3 +1,4 @@
+import {productCartQuote} from "./products";
 import { Prisma } from "@/generated/prisma/client";
 import { Temporal } from "@js-temporal/polyfill";
 import { normalizeCommerceSettings } from "@/lib/commerce-settings";
@@ -215,4 +216,17 @@ export async function recordCheckoutPayment(tx: DB, staff: VisitStaff, input: Re
         paymentIds.push(result.paymentId);remaining-=allocated;
     }
     return {saleIds:bills.map(b=>b.id),paymentIds,replayed:false};
+}
+
+
+export async function createProductSale(tx:DB,staff:VisitStaff,input:Record<string,unknown>){
+ const requestId=visitRequestId(input.requestId),familyId=recordId(input.familyId,"a family");
+ const hash=signingHash({familyId,quoteHash:input.quoteHash});await lockVisits(tx,staff.tenantId);
+ const existing=await tx.counterSale.findFirst({where:{tenantId:staff.tenantId,requestId}});
+ if(existing){if(existing.requestHash!==hash||!["RETAIL","CUSTOM"].includes(existing.kind))throw new FormError("This request already saved a different sale.",409);return{saleId:existing.id,replayed:true};}
+ if(!await tx.family.findFirst({where:{id:familyId,tenantId:staff.tenantId,status:"ACTIVE"}}))throw new FormError("Active family not found.",404);
+ const prepared=await productCartQuote(tx,staff,input);
+ if(input.quoteHash!==prepared.quoteHash)throw new FormError("A product price or total changed. Review the refreshed total.",409);
+ const sale=await createSale(tx,staff,{familyId,requestId,requestHash:hash,kind:prepared.products.length?"RETAIL":"CUSTOM",quote:prepared.quote});
+ return{saleId:sale.id,replayed:false};
 }
