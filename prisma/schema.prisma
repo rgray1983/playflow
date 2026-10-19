@@ -123,6 +123,8 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  counterSales CounterSale[]
+  counterPayments CounterPayment[]
   families          Family[]
   parents           Parent[]
   children          Child[]
@@ -166,6 +168,7 @@ model CommerceSettings {
 }
 
 model Family {
+  counterSales CounterSale[]
   intakeRequestId String?
   intakeRequestHash String?
   id        String        @id @default(cuid())
@@ -264,6 +267,8 @@ model Child {
 }
 
 model Visit {
+  counterSaleId String?
+  counterSale CounterSale? @relation(fields:[counterSaleId], references:[id], onDelete:Restrict)
   requestId String?
   requestHash String?
   guardianParentId String?
@@ -304,6 +309,7 @@ model Visit {
   @@index([membershipId])
   @@index([tenantId, requestId])
   @@unique([tenantId, childId, requestId])
+  @@index([counterSaleId])
   // A migration adds a partial unique index for one active visit per tenant/child.
 }
 
@@ -388,6 +394,8 @@ model MembershipPlan {
 }
 
 model Membership {
+  termsSnapshot Json?
+  counterSale CounterSale?
   id                   String           @id @default(cuid())
   tenantId             String
   familyId             String
@@ -748,4 +756,53 @@ model EmployeeTimeClock {
   @@index([employeeId])
   @@index([clockedInAt])
   @@index([status])
+}
+
+// Ledger amounts are integer USD cents. Snapshots preserve the reviewed transaction.
+model CounterSale {
+  id String @id @default(cuid())
+  tenantId String
+  familyId String
+  requestId String
+  requestHash String
+  kind String
+  status String @default("OPEN")
+  subtotalCents Int
+  taxCents Int
+  feeCents Int
+  totalCents Int
+  quoteSnapshot Json
+  businessSnapshot Json
+  membershipId String? @unique
+  staffId String
+  staffName String
+  voidedAt DateTime?
+  voidedBy String?
+  voidReason String?
+  createdAt DateTime @default(now())
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
+  family Family @relation(fields:[familyId],references:[id],onDelete:Restrict)
+  membership Membership? @relation(fields:[membershipId],references:[id],onDelete:Restrict)
+  visits Visit[]
+  payments CounterPayment[]
+  @@unique([tenantId, requestId])
+  @@index([tenantId, familyId, createdAt])
+}
+model CounterPayment {
+  id String @id @default(cuid())
+  tenantId String
+  saleId String
+  requestId String
+  requestHash String
+  amountCents Int
+  method String
+  methodLabel String
+  notes String?
+  staffId String
+  staffName String
+  collectedAt DateTime @default(now())
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
+  sale CounterSale @relation(fields:[saleId],references:[id],onDelete:Restrict)
+  @@unique([tenantId, requestId])
+  @@index([saleId, collectedAt])
 }

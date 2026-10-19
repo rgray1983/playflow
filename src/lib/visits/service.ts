@@ -9,17 +9,19 @@ export function visitRequestId(value:unknown){if(typeof value!=="string"||!/^[A-
 export function recordId(value:unknown,label:string){if(typeof value!=="string"||!value||value.length>100)throw new FormError(`Choose ${label}.`);return value;}
 export async function lockVisits(tx:DB,tenantId:string){await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id=${tenantId} FOR UPDATE`);}
 export function validCoverageWhere(tenantId:string,familyId:string,now=new Date()):Prisma.WaiverChildWhereInput{return{status:"VALID",signedAt:{not:null},waiver:{tenantId,familyId,kind:"LIABILITY",status:"VALID",signedAt:{not:null},version:{not:null},OR:[{expiresAt:null},{expiresAt:{gt:now}}]}};}
-export type RecordedMembership={id:string;tenantId:string;familyId:string;childId:string|null;name:string;status:string;startsAt:Date;endsAt:Date|null;membershipPlan:{id:string;tenantId:string;name:string;visitLimit:number|null}|null};
+export type RecordedMembership={id:string;tenantId:string;familyId:string;childId:string|null;name:string;status:string;startsAt:Date;endsAt:Date|null;termsSnapshot?:unknown;membershipPlan:{id:string;tenantId:string;name:string;visitLimit:number|null}|null};
 export async function membershipUse(tx:DB,membership:RecordedMembership,tenantId:string,familyId:string,childId:string,now=new Date()){
   if(membership.tenantId!==tenantId||membership.familyId!==familyId||(membership.childId&&membership.childId!==childId))return {eligible:false,reason:"Not assigned to this child or family.",remaining:null,used:0};
   if(membership.status!=="ACTIVE")return{eligible:false,reason:`Membership is ${membership.status.toLowerCase()}.`,remaining:null,used:0};
   if(membership.startsAt>now||membership.endsAt&&membership.endsAt<=now)return{eligible:false,reason:"Membership is outside its recorded dates.",remaining:null,used:0};
   const plan=membership.membershipPlan;
-  if(!plan||plan.tenantId!==tenantId)return{eligible:false,reason:"The membership plan needs venue review.",remaining:null,used:0};
-  if(plan.visitLimit===null)return{eligible:true,reason:"Unlimited recorded visits.",remaining:null,used:0};
-  if(!Number.isInteger(plan.visitLimit)||plan.visitLimit<0)return{eligible:false,reason:"The membership visit limit needs venue review.",remaining:null,used:0};
+  const terms=membership.termsSnapshot as {version?:number;visitLimit?:number|null}|null|undefined;
+  if(terms?.version!==1&&(!plan||plan.tenantId!==tenantId))return{eligible:false,reason:"The membership plan needs venue review.",remaining:null,used:0};
+  const limit=terms?.version===1?terms.visitLimit:plan!.visitLimit;
+  if(limit===null)return{eligible:true,reason:"Unlimited recorded visits.",remaining:null,used:0};
+  if(typeof limit!=="number"||!Number.isInteger(limit)||limit<0)return{eligible:false,reason:"The membership visit limit needs venue review.",remaining:null,used:0};
   const used=await tx.visit.count({where:{tenantId,familyId,membershipId:membership.id,status:{not:"CANCELLED"},checkedInAt:{gte:membership.startsAt}}});
-  const remaining=Math.max(0,plan.visitLimit-used);
+  const remaining=Math.max(0,limit-used);
   return{eligible:remaining>0,reason:remaining?`${remaining} visits left in the recorded membership term.`:"No visits remaining in this membership term.",remaining,used};
 }
 export async function intakeFamily(tx:DB,staff:VisitStaff,input:Record<string,unknown>){
@@ -85,7 +87,7 @@ export async function checkInVisits(tx:DB,staff:VisitStaff,input:Record<string,u
       const use=await membershipUse(tx,member,staff.tenantId,familyId,child.id,now);
       if(!use.eligible)throw new FormError(`${child.firstName}: ${use.reason}`,409);
       membershipId=member.id;visitType=member.name;
-      snapshot={mode:"MEMBERSHIP",name:member.name,planId:member.membershipPlan!.id,termStartsAt:member.startsAt.toISOString(),termEndsAt:member.endsAt?.toISOString()??null,visitLimit:member.membershipPlan!.visitLimit,usedAfterEntry:use.remaining===null?null:use.used+1};
+      snapshot={mode:"MEMBERSHIP",name:member.name,planId:member.membershipPlan?.id??null,termStartsAt:member.startsAt.toISOString(),termEndsAt:member.endsAt?.toISOString()??null,visitLimit:member.termsSnapshot?(member.termsSnapshot as {visitLimit:number|null}).visitLimit:member.membershipPlan!.visitLimit,usedAfterEntry:use.remaining===null?null:use.used+1};
     }else{
       const admission=await tx.admissionType.findFirst({where:{id:entry.admissionTypeId,tenantId:staff.tenantId,active:true}});
       const listedPrice=Number(admission?.price);

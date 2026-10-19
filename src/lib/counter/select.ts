@@ -1,0 +1,2 @@
+// The parent receipt omits staff IDs, request hashes and internal payment notes.
+export const receiptSelect = { id: true, kind: true, status: true, totalCents: true, quoteSnapshot: true, businessSnapshot: true, createdAt: true, voidReason: true, payments: { orderBy: { collectedAt: "asc" as const }, select: { id: true, amountCents: true, methodLabel: true, collectedAt: true, staffName: true } } } as const;

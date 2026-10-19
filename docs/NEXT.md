@@ -25,8 +25,7 @@ learn from real-world use.
 -   Inspect Wix CMS exports and implement a repeatable migration with source IDs.
 -   Add blackout dates, separate rooms if needed, and guarded rescheduling.
 -   Replace demo dashboard totals with live business data.
--   Connect admission sales, tax/fee calculation and payment receipts to the persisted playtime visit flow.
--   Complete general POS checkout (current Process Payment button is a mockup).
+-   Extend the real family POS to retail/concessions and gift cards; admission/member payment recording is now live.
 -   Reports Dashboard
 -   Email & SMS automation
 -   Staff assignments for parties
@@ -36,8 +35,7 @@ learn from real-world use.
 
 # 🟢 Medium Priority
 
--   Walk-In POS
--   Membership billing
+-   Recurring membership billing and self-service purchases
 -   Retail / concessions
 -   Inventory tracking
 -   Gift cards
@@ -70,6 +68,7 @@ Ideas worth remembering but not actively planning.
 
 # Recently Completed
 
+-   Admission bills with configured taxes/fees, recorded payments, printable receipts, real family POS and paid membership/visit-pack activation (Sprint 014; Square charging remains pending).
 -   Real open-play family intake, child waivers, admission/member visit recording and checkout (Sprint 013; payment collection remains separate).
 -   Parent family management, child archive/restore, saved/printable forms, and private history (Sprint 012).
 -   Parent booking through signed rental agreement and unpaid, expiring hold (Sprint 011; Square checkout remains pending).

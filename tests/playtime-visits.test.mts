@@ -4,11 +4,14 @@ import {FORM_VERSION,legalForm} from "../src/lib/waivers/forms";
 import {hasPermission} from "../src/lib/auth/permissions";
 let user:any,employee:any,families:any[],parents:any[],children:any[],visits:any[],waivers:any[],coverage:any[],memberships:any[],admissions:any[];
 let failChild="",locks=0,writes=0,familyReads=0,lastWhere:any;
+let counterSales:any[]=[],failBilling=false;
 const tenant={id:"tenant",slug:"palmetto-playhouse",name:"Palmetto",timezone:"America/New_York",waiverValidityDays:null};
 const matchingFamily=(where:any)=>families.find(f=>f.tenantId===where.tenantId&&(!where.id||f.id===where.id)&&(!where.status||f.status===where.status)&&(!where.intakeRequestId||f.intakeRequestId===where.intakeRequestId));
 function validProof(where:any){return coverage.filter(c=>c.childId===where.childId&&c.status==="VALID"&&c.signedAt&&c.waiver.tenantId===where.waiver.tenantId&&c.waiver.familyId===where.waiver.familyId&&c.waiver.kind==="LIABILITY"&&c.waiver.status==="VALID"&&c.waiver.signedAt&&c.waiver.version&&(!c.waiver.expiresAt||c.waiver.expiresAt>new Date()));}
-function visitRows(where:any){return visits.filter(v=>v.tenantId===where.tenantId&&(!where.familyId||v.familyId===where.familyId)&&(!where.childId||v.childId===where.childId)&&(!where.id?.in||where.id.in.includes(v.id))&&(!where.requestId||v.requestId===where.requestId)&&(!where.membershipId||v.membershipId===where.membershipId)&&(!where.checkedInAt?.gte||v.checkedInAt>=where.checkedInAt.gte)&&(!where.status||(typeof where.status==="string"?v.status===where.status:v.status!==where.status.not))&&(where.checkedOutAt!==null||v.checkedOutAt===null));}
+function visitRows(where:any){return visits.filter(v=>v.tenantId===where.tenantId&&(!where.familyId||v.familyId===where.familyId)&&(!where.childId||(typeof where.childId==="string"?v.childId===where.childId:where.childId.in.includes(v.childId)))&&(!where.id?.in||where.id.in.includes(v.id))&&(!where.requestId||v.requestId===where.requestId)&&(!where.membershipId||v.membershipId===where.membershipId)&&(!where.checkedInAt?.gte||v.checkedInAt>=where.checkedInAt.gte)&&(!where.status||(typeof where.status==="string"?v.status===where.status:v.status!==where.status.not))&&(where.checkedOutAt!==null||v.checkedOutAt===null));}
 const db:any={
+ commerceSettings:{findUnique:async()=>null},
+ counterSale:{findFirst:async({where}:any)=>counterSales.find(s=>s.tenantId===where.tenantId&&s.requestId===where.requestId)??null,create:async({data}:any)=>{if(failBilling)throw new Error("simulated bill failure");const sale={id:`sale-${counterSales.length}`,...data};counterSales.push(sale);return sale;}},
  employee:{findUnique:async()=>employee,findMany:async()=>[]},
  tenant:{findUnique:async()=>tenant,findUniqueOrThrow:async()=>tenant},
  family:{
@@ -18,7 +21,7 @@ const db:any={
  },
  parent:{findFirst:async({where}:any)=>parents.find(p=>p.tenantId===where.tenantId&&(!where.id||p.id===where.id)&&(!where.familyId||p.familyId===where.familyId)&&(!where.authUserId||p.authUserId===where.authUserId)&&(!where.family||matchingFamily({tenantId:p.tenantId,id:p.familyId,status:where.family.status})))??null,findMany:async({where}:any)=>parents.filter(p=>p.tenantId===where.tenantId&&(p.email?.toLowerCase()===where.OR[0].email.equals||p.firstName.toLowerCase()===where.OR[1].firstName.equals.toLowerCase()&&p.lastName.toLowerCase()===where.OR[1].lastName.equals.toLowerCase())),update:async({where,data}:any)=>{const parent=parents.find(p=>p.id===where.id&&p.tenantId===where.tenantId);Object.assign(parent,data);return parent;}},
  child:{findFirst:async({where}:any)=>children.find(c=>c.tenantId===where.tenantId&&(!where.id||c.id===where.id)&&(!where.familyId||c.familyId===where.familyId)&&(where.active===undefined||c.active===where.active)&&(!where.intakeRequestId||c.intakeRequestId===where.intakeRequestId)&&(!where.firstName||c.firstName.toLowerCase()===where.firstName.equals.toLowerCase())&&(!where.lastName||c.lastName.toLowerCase()===where.lastName.equals.toLowerCase())&&(where.dateOfBirth===undefined||c.dateOfBirth?.getTime()===where.dateOfBirth?.getTime()))??null,findMany:async({where}:any)=>children.filter(c=>c.tenantId===where.tenantId&&c.familyId===where.familyId&&c.active&&(!where.id?.in||where.id.in.includes(c.id))),create:async({data}:any)=>{writes++;const child={id:`child-${children.length}`,active:true,...data};children.push(child);return child;}},
- visit:{findFirst:async({where}:any)=>visitRows(where)[0]??null,findMany:async(query:any)=>{lastWhere=query.where;return visitRows(query.where).slice(query.skip??0,(query.skip??0)+(query.take??1000)).map(v=>({...v,child:children.find(c=>c.id===v.childId),family:families.find(f=>f.id===v.familyId),guardianParent:parents.find(p=>p.id===v.guardianParentId)??null}));},count:async({where}:any)=>visitRows(where).length,create:async({data}:any)=>{if(data.childId===failChild)throw new Error("simulated visit persistence failure");writes++;const visit={id:`visit-${visits.length}`,checkedOutAt:null,...data};visits.push(visit);return visit;},update:async({where,data}:any)=>{assert.equal(where.tenantId,"tenant");writes++;const visit=visits.find(v=>v.id===where.id&&v.tenantId===where.tenantId);Object.assign(visit,data);return visit;}},
+ visit:{updateMany:async({where,data}:any)=>{let count=0;visits.filter(v=>v.tenantId===where.tenantId&&v.familyId===where.familyId&&where.id.in.includes(v.id)&&v.counterSaleId==null).forEach(v=>{Object.assign(v,data);count++;});return{count};},findFirst:async({where}:any)=>visitRows(where)[0]??null,findMany:async(query:any)=>{lastWhere=query.where;return visitRows(query.where).slice(query.skip??0,(query.skip??0)+(query.take??1000)).map(v=>({...v,child:children.find(c=>c.id===v.childId),family:families.find(f=>f.id===v.familyId),guardianParent:parents.find(p=>p.id===v.guardianParentId)??null}));},count:async({where}:any)=>visitRows(where).length,create:async({data}:any)=>{if(data.childId===failChild)throw new Error("simulated visit persistence failure");writes++;const visit={id:`visit-${visits.length}`,checkedOutAt:null,...data};visits.push(visit);return visit;},update:async({where,data}:any)=>{assert.equal(where.tenantId,"tenant");writes++;const visit=visits.find(v=>v.id===where.id&&v.tenantId===where.tenantId);Object.assign(visit,data);return visit;}},
  waiverChild:{findFirst:async({where}:any)=>validProof(where)[0]??null},
  waiver:{findFirst:async({where}:any)=>waivers.find(w=>w.tenantId===where.tenantId&&w.requestId===where.requestId)??null,create:async({data}:any)=>{writes++;const doc={id:`waiver-${waivers.length}`,...data};const kids=data.children.create.map((c:any,index:number)=>({id:`coverage-${coverage.length+index}`,waiver:doc,...c}));coverage.push(...kids);waivers.push(doc);return{...doc,children:kids};}},
  membership:{findFirst:async({where}:any)=>memberships.find(m=>m.id===where.id&&m.tenantId===where.tenantId&&m.familyId===where.familyId)??null,findMany:async({where}:any)=>memberships.filter(m=>m.tenantId===where.tenantId&&m.familyId===where.familyId)},
@@ -27,7 +30,7 @@ const db:any={
  $queryRaw:async()=>{locks++;return[];},
 };
 let queue=Promise.resolve();
-db.$transaction=async(callback:any)=>{const previous=queue;let release!:()=>void;queue=new Promise<void>(resolve=>release=resolve);await previous;const original=structuredClone({families,parents,children,visits,waivers,coverage,memberships});try{return await callback(db);}catch(error){({families,parents,children,visits,waivers,coverage,memberships}=original);throw error;}finally{release();}};
+db.$transaction=async(callback:any)=>{const previous=queue;let release!:()=>void;queue=new Promise<void>(resolve=>release=resolve);await previous;const original=structuredClone({families,parents,children,visits,waivers,coverage,memberships,counterSales});try{return await callback(db);}catch(error){({families,parents,children,visits,waivers,coverage,memberships,counterSales}=original);throw error;}finally{release();}};
 mock.module("../src/lib/prisma.ts",{namedExports:{prisma:db}});
 mock.module("../src/lib/auth/server.ts",{namedExports:{getAuth:()=>({getSession:async()=>({data:user?{user}:null,error:null})})}});
 const {GET,POST}=await import("../src/app/api/check-in/route");
@@ -39,6 +42,7 @@ const checkIn=(extra:any={})=>({action:"check-in",requestId:"check-in-request-12
 const member=(extra:any={})=>({id:"member",tenantId:"tenant",familyId:"family",childId:null,name:"Visit pack",status:"ACTIVE",startsAt:new Date(Date.now()-86400000),endsAt:new Date(Date.now()+86400000),membershipPlan:{id:"plan",tenantId:"tenant",name:"Visit pack",visitLimit:2},...extra});
 const signature=(extra:any={})=>({version:FORM_VERSION,signerName:"Test Parent",signerEmail:"parent@example.invalid",signature:"Test Parent",signatureConsent:true,requestId:"desk-signature-request-123456",acknowledgments:legalForm("LIABILITY").clauses.map(c=>c[0]),photoConsent:false,...extra});
 beforeEach(()=>{
+ counterSales=[];failBilling=false;
  user={id:"user",email:"parent@example.invalid",emailVerified:true};employee={id:"front-desk",tenantId:"tenant",authUserId:"user",firstName:"Test",lastName:"Staff",status:"ACTIVE",accessRole:"FRONT_DESK",accessApproved:true,staffRole:null};
  families=[{id:"family",tenantId:"tenant",name:"Test Family",status:"ACTIVE"},{id:"foreign-family",tenantId:"other",name:"Private Family",status:"ACTIVE"}];parents=[{id:"parent",tenantId:"tenant",familyId:"family",authUserId:"user",firstName:"Test",lastName:"Parent",email:"parent@example.invalid",phone:"8035550100",family:{status:"ACTIVE"}}];
  children=["a","b"].map(letter=>({id:`child-${letter}`,tenantId:"tenant",familyId:"family",firstName:`Child ${letter}`,lastName:"Test",dateOfBirth:new Date("2020-01-01"),allergies:null,medicalNotes:null,active:true}));
@@ -125,4 +129,13 @@ test("live family search/details and occupancy use saved tenant records, and vis
 });
 test("cross-site desk mutations fail before any visit or family writes",async()=>{
  const cross=new Request("http://localhost/api/check-in",{method:"POST",headers:{Origin:"https://other.invalid","Content-Type":"application/json"},body:JSON.stringify(checkIn())});assert.equal((await POST(cross)).status,403);assert.equal(writes,0);
+});
+
+test("admission check-in creates one family bill atomically and retry never duplicates it",async()=>{
+ const body=checkIn({createAdmissionBill:true,entries:[entry("child-a"),entry("child-b")]});
+ const response=await POST(request(body));assert.equal(response.status,200);const result=await response.json();assert.equal(result.saleId,"sale-0");assert.equal(visits.length,2);assert.equal(counterSales.length,1);assert.equal(counterSales[0].totalCents,4000);assert(visits.every(v=>v.counterSaleId==="sale-0"));
+ assert.equal((await POST(request(body))).status,200);assert.equal(counterSales.length,1);assert.equal(visits.length,2);
+});
+test("failed admission bill rolls back whole check-in instead of leaving unbilled visits",async()=>{
+ failBilling=true;const response=await POST(request(checkIn({createAdmissionBill:true})));assert.equal(response.status,500);assert.equal(visits.length,0);assert.equal(counterSales.length,0);
 });

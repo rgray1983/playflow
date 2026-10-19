@@ -1,7 +1,9 @@
+import {billAdmissions} from "@/lib/counter/service";
+import {hasPermission} from "@/lib/auth/permissions";
 import {NextResponse} from "next/server";
 import {prisma} from "@/lib/prisma";
 import {getStaffContext,getStaffTenant,withStaff} from "@/lib/auth/staff";
-import {FormError} from "@/lib/waivers/signing";
+import {FormError,signingHash} from "@/lib/waivers/signing";
 import {addVisitChild,checkInVisits,checkOutVisits,intakeFamily,membershipUse,recordId,validCoverageWhere} from "@/lib/visits/service";
 
 function errorResponse(error:unknown){
@@ -31,7 +33,7 @@ async function handleGET(request:Request){
     const page=Number(query.get("page")??1);if(!Number.isInteger(page)||page<1||page>10000)throw new FormError("Choose a valid inside-list page.");
     const where={tenantId:tenant.id,status:"CHECKED_IN" as const,checkedOutAt:null};
     const [visits,insideCount,admissions]=await Promise.all([
-      prisma.visit.findMany({where,skip:(page-1)*50,take:50,orderBy:[{checkedInAt:"asc"},{id:"asc"}],select:{id:true,familyId:true,checkedInAt:true,visitType:true,admissionSnapshot:true,child:{select:{firstName:true,lastName:true}},family:{select:{name:true}},guardianParent:{select:{firstName:true,lastName:true}}}}),
+      prisma.visit.findMany({where,skip:(page-1)*50,take:50,orderBy:[{checkedInAt:"asc"},{id:"asc"}],select:{id:true,familyId:true,checkedInAt:true,visitType:true,admissionSnapshot:true,counterSale:{select:{status:true,totalCents:true,payments:{select:{amountCents:true}}}},child:{select:{firstName:true,lastName:true}},family:{select:{name:true}},guardianParent:{select:{firstName:true,lastName:true}}}}),
       prisma.visit.count({where}),prisma.admissionType.findMany({where:{tenantId:tenant.id,active:true},orderBy:{name:"asc"},take:100,select:{id:true,name:true,price:true}}),
     ]);
     return NextResponse.json({business:{name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},visits,insideCount,page,pageSize:50,admissions:admissions.map(a=>({...a,price:Number(a.price)})),formsAvailable:tenant.slug==="palmetto-playhouse"});
@@ -46,7 +48,19 @@ async function handlePOST(request:Request){
       switch(body.action){
         case "intake":return intakeFamily(tx,staff,body);
         case "add-child":return addVisitChild(tx,staff,body);
-        case "check-in":return checkInVisits(tx,staff,body);
+        case "check-in":{
+          const result=await checkInVisits(tx,staff,body);
+          if(body.createAdmissionBill===true){
+            if(!hasPermission(staff.accessRole,"payments.write"))throw new FormError("Payment access is required to create a bill.",403);
+            const admissionIds=(body.entries as {childId:string;mode:string}[]).filter(e=>e.mode==="ADMISSION").map(e=>e.childId);
+            if(admissionIds.length){
+              const visits=await tx.visit.findMany({where:{tenantId:staff.tenantId,id:{in:result.visitIds},childId:{in:admissionIds}},select:{id:true}});
+              const bill=await billAdmissions(tx,staff,{familyId:body.familyId,visitIds:visits.map(v=>v.id),requestId:`visit-bill-${signingHash({requestId:body.requestId})}`});
+              return{...result,saleId:bill.saleId};
+            }
+          }
+          return result;
+        }
         case "check-out":return checkOutVisits(tx,staff,body);
         default:throw new FormError("Choose a valid visit action.");
       }

@@ -1,5 +1,5 @@
 export type Admission={id:string;name:string;price:number};
-export type InsideVisit={id:string;familyId:string;checkedInAt:string;visitType:string;admissionSnapshot:{mode?:string}|null;child:{firstName:string;lastName:string};family:{name:string};guardianParent:{firstName:string;lastName:string}|null};
+export type InsideVisit={counterSale?:{status:string;totalCents:number;payments:{amountCents:number}[]}|null;id:string;familyId:string;checkedInAt:string;visitType:string;admissionSnapshot:{mode?:string}|null;child:{firstName:string;lastName:string};family:{name:string};guardianParent:{firstName:string;lastName:string}|null};
 export type CheckInOverview={business:{name:string;slug:string;timezone:string};visits:InsideVisit[];insideCount:number;page:number;pageSize:number;admissions:Admission[];formsAvailable:boolean};
 export type DeskGuardian={id:string;firstName:string;lastName:string;email:string|null;phone:string|null};
 export type DeskMembership={id:string;name:string;status:string;startsAt:string;endsAt:string|null;eligible:boolean;reason:string;remaining:number|null};
