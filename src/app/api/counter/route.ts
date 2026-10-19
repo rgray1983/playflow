@@ -24,7 +24,7 @@ async function handleGET(request: Request) {
         const settings = normalizeCommerceSettings(raw ?? {});
         return NextResponse.json({ sales: sales.slice(0, 20), hasMore: sales.length > 20, page, unbilled: unbilled.slice(0, 50).filter(v => (v.admissionSnapshot as {
                 mode?: string;
-            } | null)?.mode === "ADMISSION"), moreUnbilled: unbilled.length > 50, plans: plans.map(p => ({ ...p, price: Number(p.price) })), paymentMethods: settings.paymentMethods.filter(m => m.enabled && m.allowBalances && ["cash", "card", "other"].includes(m.key)), allowPartialPayments: settings.checkoutRules.allowPartialPayments });
+            } | null)?.mode === "ADMISSION"), moreUnbilled: unbilled.length > 50, plans: plans.map(p => ({ ...p, price: Number(p.price) })), paymentMethods: settings.paymentMethods.filter(m => m.enabled && m.allowBalances && ["cash", "card", "other"].includes(m.key)), allowSplitPayments: settings.checkoutRules.allowSplitPayments, allowPartialPayments: settings.checkoutRules.allowPartialPayments });
     }
     catch (error) {
         return failure(error);

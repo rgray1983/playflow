@@ -46,3 +46,9 @@ Validation: 189 automated tests passed, including complete admission check-in/bi
 - Retail/concessions, gift cards and inventory checkout.
 - Automatic emailed receipts/booking notifications (provider/sender setup and delivery tracking).
 - Visual polish and full manual acceptance testing on desktop/mobile.
+
+## POS register layout restored
+
+The POS now uses the original register arrangement: sidebar navigation, sales/category tiles, ordered items and totals, cash/card/split controls, an onscreen decimal number pad, and a prominent Pay button. Family lookup and history/membership management open in separate dialogs. The register uses persisted admission/member bills; it does not reintroduce fabricated products or process an unrecorded demo charge. Unbilled saved visits can be added to checkout. The Pay action confirms externally collected money through the existing idempotent payment service, then presents the receipt. Partial/split controls honor Commerce Settings.
+
+The first numeric key replaces the prefilled exact balance, so staff can enter a partial amount directly. Clear, backspace, duplicate decimals and maximum precision are covered by three additional tests (192 total passing).
