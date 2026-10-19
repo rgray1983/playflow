@@ -1,4 +1,5 @@
 "use client";
+import SquareCardPayment from "@/components/counter/SquareCardPayment";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import SigningDialog from "@/components/forms/SigningDialog";
@@ -25,6 +26,7 @@ export default function ParentBookingWizard({slug,parent,email,familyChildren,on
 }) {
   const [catalog,setCatalog]=useState<Catalog|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false),[step,setStep]=useState(0);
   const [childId,setChildId]=useState(familyChildren.length===1?familyChildren[0].id:""),[eventTypeId,setEventTypeId]=useState(""),[packageId,setPackageId]=useState(""),[addOnIds,setAddOnIds]=useState<string[]>([]),[date,setDate]=useState(""),[time,setTime]=useState(""),[notes,setNotes]=useState("");
+  const [paymentOpen,setPaymentOpen]=useState(false),[paymentPaid,setPaymentPaid]=useState(false);
   const [availability,setAvailability]=useState<Availability|null>(null),[waiverSaved,setWaiverSaved]=useState(false),[showWaiver,setShowWaiver]=useState(false),[saved,setSaved]=useState<SavedBooking|null>(null);
   const requestId=useRef(""),heading=useRef<HTMLHeadingElement>(null);
   const endpoint=`/api/parent/${encodeURIComponent(slug)}/bookings`;
@@ -60,11 +62,11 @@ export default function ParentBookingWizard({slug,parent,email,familyChildren,on
       {error&&<p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}
       {saved?<section className="space-y-4 rounded-xl border p-5">
         <p className="font-semibold">{saved.title}</p><p>{formatted(saved.startTime)}</p>
-        <p>Your rental agreement is signed. Online checkout did not collect a payment.</p>{saved.status==="PENDING"&&<p>Your party is <strong>not confirmed</strong>.{savedExpired?" This temporary hold has expired.":""}</p>}
+        <p>Your rental agreement is signed.</p>{saved.status==="PENDING"&&<p>Your party is <strong>not confirmed</strong>.{savedExpired?" This temporary hold has expired.":""}</p>}
         <dl className="space-y-2"><div className="flex justify-between"><dt>Deposit due</dt><dd>{money(saved.depositDue)}</dd></div><div className="flex justify-between"><dt>Total unpaid balance</dt><dd>{money(saved.balanceDue)}</dd></div></dl>
         {saved.status==="PENDING"&&!savedExpired&&<p className="text-sm">Temporary hold expires {formatted(saved.expiresAt)}. Contact the venue to arrange the deposit before it expires.</p>}
-        <p className="rounded-lg bg-amber-50 p-4 text-sm">Online checkout is not connected yet. You can see the current status under Your party bookings. Contact the venue about payment or changes.</p>
-        <button disabled className={button}>Payment unavailable</button><p className="break-all text-xs text-gray-500">Reference: {saved.eventNumber}</p>
+        <p className="rounded-lg bg-amber-50 p-4 text-sm">Pay your deposit securely below when Square is connected, or contact the venue to arrange payment. The venue confirms your booking separately.</p>
+        {!savedExpired&&saved.depositDue>0&&!paymentPaid&&<button onClick={()=>setPaymentOpen(true)} className={button}>Pay deposit with Square</button>}{paymentPaid&&<p role="status" className="font-semibold text-green-800">Deposit payment completed. Contact the venue for booking confirmation.</p>}<p className="break-all text-xs text-gray-500">Reference: {saved.eventNumber}</p>
         <button className="block underline" onClick={onClose}>Return to family</button>
       </section>:!catalog?<p>{error?"Close and reopen to try again.":"Loading party packages…"}</p>:<>
         {step===0&&<form onSubmit={checkAvailability} className="space-y-5">
@@ -75,7 +77,7 @@ export default function ParentBookingWizard({slug,parent,email,familyChildren,on
           {!!catalog.addOns.length&&<fieldset className="space-y-3"><legend className="mb-2 font-semibold">Optional add-ons</legend>{catalog.addOns.map(a=><label key={a.id} className="flex items-start gap-3 rounded-lg border p-3"><input type="checkbox" className="mt-1" checked={addOnIds.includes(a.id)} onChange={e=>setAddOnIds(ids=>e.target.checked?[...ids,a.id]:ids.filter(id=>id!==a.id))}/><span>{a.name} — {money(a.price)}{a.durationMinutes>0?` (+${a.durationMinutes} minutes)`:""}<span className="block text-sm text-gray-600">{a.description}</span></span></label>)}</fieldset>}
           <label className="block font-semibold">Party date<input required type="date" value={date} onChange={e=>setDate(e.target.value)} className={field}/></label>
           <label className="block font-semibold">Party notes (optional)<textarea maxLength={2000} value={notes} onChange={e=>setNotes(e.target.value)} className={field}/></label>
-          <p className="text-sm text-gray-600">Availability, taxes, fees, and the deposit are checked before you sign. No payment will be taken.</p>
+          <p className="text-sm text-gray-600">Availability, taxes, fees, and the deposit are checked before you sign. Payment is a separate step after signing.</p>
           <button disabled={busy||!familyChildren.length} className={button}>{busy?"Checking…":"Check available times"}</button>
         </form>}
         {step===1&&availability&&<section className="space-y-5">
@@ -91,12 +93,12 @@ export default function ParentBookingWizard({slug,parent,email,familyChildren,on
           {notes&&<p className="whitespace-pre-wrap text-sm">Notes: {notes}</p>}
         </section>}
         {step===2&&<section className="space-y-5">
-          <p className="rounded-lg bg-amber-50 p-4 text-sm">Signing creates a 48-hour temporary hold awaiting your deposit. Online payments are not connected. Contact the venue to arrange payment; the party will remain unconfirmed until the venue confirms it.</p>
+          <p className="rounded-lg bg-amber-50 p-4 text-sm">Signing creates a 48-hour temporary hold awaiting your deposit. Pay the deposit after signing or arrange payment with the venue. The party remains unconfirmed until the venue confirms it.</p>
           {covered?<p className="font-semibold text-green-800">Liability waiver on file for {child?.firstName}.</p>:<><p>A signed liability waiver is required for {child?.firstName}.</p><button className={button} onClick={()=>setShowWaiver(true)}>Complete child’s liability waiver</button>{showWaiver&&<LegalSigningForm scrollTerms={false} kind="LIABILITY" signerName={fullName} signerEmail={email} onSign={signWaiver} childrenSummary={<p>Child covered: {child?.firstName} {child?.lastName}</p>}/>}</>}
           <div className="flex items-center justify-between gap-3"><button disabled={busy} className="underline" onClick={()=>back(1)}>Back to times</button><button disabled={!covered||busy} className={button} onClick={()=>setStep(3)}>Read rental agreement</button></div>
         </section>}
         {step===3&&<><button disabled={busy} className="underline" onClick={()=>back(2)}>Back to review</button><LegalSigningForm scrollTerms={false} kind="RENTAL" signerName={fullName} signerEmail={email} onSign={reserve} childrenSummary={<p className="text-sm">Signing saves the party details above as an unpaid temporary hold. No charge will be made.</p>}/></>}
       </>}
     </div>
-  </SigningDialog>;
+  {paymentOpen&&saved&&<SquareCardPayment slug={slug} payload={{kind:"party",partyId:saved.id,purpose:"DEPOSIT",amountCents:Math.round(saved.depositDue*100)}} onClose={()=>setPaymentOpen(false)} onPaid={()=>{setPaymentPaid(true);onSaved().catch(()=>{});}}/>}</SigningDialog>;
 }

@@ -47,3 +47,9 @@ test("expiring a hold cancels it once and preserves its payment history",async()
   assert.equal((await(await expire()).json()).expiredCount,0);
   assert.equal(timeline.filter(t=>t.title==="Pending Hold Expired").length,1);
 });
+
+test("Square preflight uses party rules without changing balances or recording money",async()=>{
+ const {recordPartyPayment}=await import("../src/lib/payments/party");
+ await recordPartyPayment(tx as any,{tenantId:"tenant",employeeId:"staff",name:"Test Cashier"},"party",payload(),{validateOnly:true});
+ assert.equal(payments.length,0);assert.equal(timeline.length,0);assert.equal(Number(party.balanceDue),300);assert.equal(party.depositStatus,"PENDING");
+});

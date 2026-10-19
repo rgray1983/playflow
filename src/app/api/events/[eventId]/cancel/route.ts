@@ -1,5 +1,8 @@
 import { withStaff, getStaffContext } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
+import {Prisma} from "@/generated/prisma/client";
+import {FormError} from "@/lib/waivers/signing";
+import {assertNoPendingPayment} from "@/lib/payments/pending";
 import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ eventId: string }> };
@@ -17,6 +20,8 @@ async function handlePOST(_request: Request, { params }: Params) {
     if (party.status === "CANCELLED") return NextResponse.json({ event: party });
 
     const updatedParty = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id=${party.tenantId} FOR UPDATE`);
+      await assertNoPendingPayment(tx,party.tenantId,[`party:${eventId}`]);
       const event = await tx.party.update({ where: { id: eventId, tenantId: getStaffContext().tenantId }, data: { status: "CANCELLED" } });
       await tx.eventTimelineItem.create({
         data: {
@@ -35,6 +40,7 @@ async function handlePOST(_request: Request, { params }: Params) {
 
     return NextResponse.json({ event: updatedParty });
   } catch (error) {
+    if(error instanceof FormError)return NextResponse.json({error:error.message},{status:error.status});
     return jsonError(error, "Unable to cancel party.");
   }
 }

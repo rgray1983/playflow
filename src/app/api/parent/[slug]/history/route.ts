@@ -42,7 +42,7 @@ async function handleGET(request:Request,context:{params:Promise<{slug:string}>}
       }));break;
     }
     case "counter":records=await prisma.counterSale.findMany({where:family,...pagination,orderBy:[{createdAt:"desc"},{id:"desc"}],select:receiptSelect});break;
-    case "payments":records=await prisma.eventPayment.findMany({where:{tenantId:tenant.id,party:{tenantId:tenant.id,familyId:parent.familyId,primaryParentId:parent.id}},...pagination,orderBy:[{collectedAt:"desc"},{id:"desc"}],select:{id:true,amount:true,method:true,status:true,purpose:true,collectedAt:true,party:{select:{title:true}}}});break;
+    case "payments":records=await prisma.eventPayment.findMany({where:{tenantId:tenant.id,party:{tenantId:tenant.id,familyId:parent.familyId,primaryParentId:parent.id}},...pagination,orderBy:[{collectedAt:"desc"},{id:"desc"}],select:{id:true,amount:true,method:true,providerMode:true,status:true,purpose:true,collectedAt:true,party:{select:{title:true}}}});break;
     case "archived":records=await prisma.child.findMany({where:{...family,active:false},...pagination,orderBy:[{firstName:"asc"},{id:"asc"}],select:{id:true,firstName:true,lastName:true,dateOfBirth:true,updatedAt:true}});break;
     default:throw new FormError("Choose a history section.");
   }

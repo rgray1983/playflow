@@ -123,6 +123,8 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  paymentConnections PaymentConnection[]
+  providerCheckouts ProviderCheckout[]
   counterProducts CounterProduct[]
   counterSales CounterSale[]
   counterPayments CounterPayment[]
@@ -650,6 +652,7 @@ model PartyAddOnItem {
 }
 
 model EventPayment {
+  providerMode String?
   id            String             @id @default(cuid())
   tenantId      String
   partyId       String
@@ -790,6 +793,7 @@ model CounterSale {
   @@index([tenantId, familyId, createdAt])
 }
 model CounterPayment {
+  providerMode String?
   id String @id @default(cuid())
   tenantId String
   saleId String
@@ -820,4 +824,50 @@ model CounterProduct {
   updatedAt DateTime @updatedAt
   tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
   @@index([tenantId, active, category])
+}
+
+model PaymentConnection {
+  checkouts ProviderCheckout[]
+  id String @id @default(cuid())
+  tenantId String
+  mode String
+  merchantId String?
+  locationId String?
+  locationLabel String?
+  accessToken String?
+  refreshToken String?
+  expiresAt DateTime?
+  stateHash String? @unique
+  stateExpiresAt DateTime?
+  stateUserId String?
+  connectedBy String?
+  checkedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
+  @@unique([tenantId,mode])
+}
+
+model ProviderCheckout {
+  id String @id @default(cuid())
+  tenantId String
+  connectionId String
+  connection PaymentConnection @relation(fields:[connectionId],references:[id],onDelete:Restrict)
+  mode String
+  requestId String
+  requestHash String
+  status String @default("PENDING")
+  amountCents Int
+  targetKeys String[]
+  payload Json
+  actor Json
+  sourceToken String?
+  providerPaymentId String? @unique
+  receiptUrl String?
+  failureCode String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
+  @@unique([tenantId,requestId])
+  @@index([tenantId,status])
 }

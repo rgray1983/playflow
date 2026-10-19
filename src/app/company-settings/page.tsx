@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import SignOutButton from "@/components/SignOutButton";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AddOnsSettings from "./components/AddOnsSettings";
 import AdmissionsSettings from "./components/AdmissionsSettings";
 import BrandingSettings from "./components/BrandingSettings";
 import BusinessProfileSettings from "./components/BusinessProfileSettings";
+import PaymentProvidersSettings from "./components/PaymentProvidersSettings";
 import CommerceSettings from "./components/CommerceSettings";
 import EventTypesSettings from "./components/EventTypesSettings";
 import MembershipsSettings from "./components/MembershipsSettings";
@@ -31,6 +32,7 @@ const settingsTabs = [
   "Waivers",
   "POS & Products",
   "Commerce",
+  "Payment Providers",
   "Staff Roles",
   "Staff Access",
 ];
@@ -70,7 +72,9 @@ function renderSettingsSection(activeTab: string,onSelect:(tab:string)=>void) {
     case "POS & Products":
       return <POSSettings onCommerce={()=>onSelect("Commerce")}/>;
     case "Commerce":
-      return <CommerceSettings />;
+      return <CommerceSettings onProviders={()=>onSelect("Payment Providers")}/>;
+    case "Payment Providers":
+      return <PaymentProvidersSettings/>;
     case "Staff Roles":
       return <StaffRolesSettings />;
     case "Staff Access":
@@ -82,6 +86,8 @@ function renderSettingsSection(activeTab: string,onSelect:(tab:string)=>void) {
 
 export default function CompanySettingsPage() {
   const [activeTab, setActiveTab] = useState("Modules");
+
+  useEffect(()=>{const section=new URLSearchParams(window.location.search).get("section");if(section&&settingsTabs.includes(section))Promise.resolve(section).then(setActiveTab);},[]);
 
   return (
     <main className="h-dvh overflow-hidden bg-[#E7E3DA] p-2 sm:p-5 text-[#202633] antialiased">

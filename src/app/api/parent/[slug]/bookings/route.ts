@@ -1,3 +1,4 @@
+import {assertNoPendingPayment} from "@/lib/payments/pending";
 import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -41,6 +42,7 @@ async function handlePOST(request:Request,context:Params){
       const party=await tx.party.findFirst({where:{id:body.partyId,tenantId:tenant.id,primaryParentId:currentParent.id,familyId:currentParent.familyId},include:{payments:{where:{status:"PAID"},select:{id:true}}}});
       if(!party)throw new FormError("Booking not found.",404);
       if(party.status==="CANCELLED")return;
+      await assertNoPendingPayment(tx,tenant.id,[`party:${party.id}`]);
       if(party.status!=="PENDING"||party.depositStatus!=="PENDING"||party.payments.length>0)throw new FormError("Contact the venue to cancel a confirmed or paid booking.",409);
       await tx.party.update({where:{id:party.id},data:{status:"CANCELLED",workflowStep:"CANCELLED"}});
       await tx.eventTimelineItem.create({data:{tenantId:tenant.id,partyId:party.id,title:"Pending booking cancelled by parent",body:"The unpaid temporary hold was released.",icon:"×"}});

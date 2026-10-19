@@ -65,31 +65,17 @@ function parseNumberList(value: string) {
     .filter((item) => Number.isFinite(item) && item >= 0);
 }
 
-export default function CommerceSettings() {
+export default function CommerceSettings({onProviders}:{onProviders:()=>void}) {
   const [settings, setSettings] = useState<CommerceSettingsPayload>(defaultCommerceSettings);
   const [activeTab, setActiveTab] = useState(commerceTabs[0]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  async function loadCommerceSettings() {
-    setIsLoading(true);
-    setMessage("");
-
-    try {
-      const response = await fetch("/api/company-settings/commerce");
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to load commerce settings.");
-      setSettings({ ...defaultCommerceSettings, ...data.commerceSettings });
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to load commerce settings.");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   useEffect(() => {
-    loadCommerceSettings();
+    const controller=new AbortController();
+    fetch("/api/company-settings/commerce",{cache:"no-store",signal:controller.signal}).then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error||"Unable to load commerce settings.");return data;}).then(data=>setSettings({...defaultCommerceSettings,...data.commerceSettings})).catch(error=>{if(!controller.signal.aborted)setMessage(error.message);}).finally(()=>{if(!controller.signal.aborted)setIsLoading(false);});
+    return()=>controller.abort();
   }, []);
 
   async function saveCommerceSettings() {
@@ -350,17 +336,7 @@ export default function CommerceSettings() {
     }
 
     return (
-      <SettingsSection title="Processor" description="Choose the future payment processor target. No external processor connection is wired in V1.">
-        <div className="grid grid-cols-2 gap-3">
-          <SelectField label="Provider" value={settings.processorRules.provider} onChange={(provider) => setSettings((current) => ({ ...current, processorRules: { ...current.processorRules, provider: provider as CommerceSettingsPayload["processorRules"]["provider"], connected: false } }))} options={[{ label: "None", value: "none" }, { label: "Square", value: "square" }, { label: "Stripe", value: "stripe" }, { label: "Clover", value: "clover" }]} />
-          <SelectField label="Mode" value={settings.processorRules.mode} onChange={(mode) => setSettings((current) => ({ ...current, processorRules: { ...current.processorRules, mode: mode as "sandbox" | "live" } }))} options={[{ label: "Sandbox", value: "sandbox" }, { label: "Live", value: "live" }]} />
-          <TextField label="Account Label" value={settings.processorRules.accountLabel} onChange={(accountLabel) => setSettings((current) => ({ ...current, processorRules: { ...current.processorRules, accountLabel } }))} placeholder="Optional internal label" />
-          <div className="rounded-[10px] bg-white px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280]">Connection</p>
-            <p className="mt-2 text-sm font-semibold text-[#1E293B]">{settings.processorRules.connected ? "Connected" : "Not connected in V1"}</p>
-          </div>
-        </div>
-      </SettingsSection>
+      <SettingsSection title="Processor" description="Manage the shared payment connection in Payment Providers."><p className="text-sm text-gray-600">Square account authorization, Sandbox / Live selection and location verification are managed centrally.</p><button type="button" onClick={onProviders} className="mt-4 rounded-xl bg-[#1E293B] px-4 py-3 font-semibold text-white">Open Payment Providers</button></SettingsSection>
     );
   }
 

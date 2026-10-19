@@ -49,6 +49,7 @@ const apiRoot = resolve("src/app/api");
 for (const file of routes(apiRoot)) {
   const relative = file.slice(apiRoot.length + 1);
   if (/^parent\//.test(relative)) { assert.ok(readFileSync(file,"utf8").includes("withParent("), `Parent API must declare parent guards: ${relative}`); continue; }
+  if(relative === "payments/square/webhook/route.ts") { assert.ok(readFileSync(file,"utf8").includes("validSignature("),"Square webhook must verify its signature"); continue; }
   if (/^(auth|rsvp|confirm-party)\//.test(relative) || relative === "staff/setup/route.ts") continue;
   const methods = [...readFileSync(file, "utf8").matchAll(/export const (GET|POST|PUT|DELETE|PATCH) = withStaff/g)].map((match) => match[1]);
   assert.ok(methods.length, `Staff API must declare guards: ${relative}`);

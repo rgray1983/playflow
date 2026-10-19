@@ -1,3 +1,4 @@
+import {assertNoPendingPayment,type PaymentExecution} from "@/lib/payments/pending";
 import {productCartQuote} from "./products";
 import { Prisma } from "@/generated/prisma/client";
 import { Temporal } from "@js-temporal/polyfill";
@@ -102,7 +103,7 @@ export async function billAdmissions(tx: DB, staff: VisitStaff, input: Record<st
         throw new FormError("A selected visit changed. Refresh before billing.", 409);
     return { saleId: sale.id, replayed: false };
 }
-export async function recordCounterPayment(tx: DB, staff: VisitStaff, input: Record<string, unknown>, groupFingerprint?: string) {
+export async function recordCounterPayment(tx: DB, staff: VisitStaff, input: Record<string, unknown>, groupFingerprint?: string,execution:PaymentExecution={}) {
     const saleId = recordId(input.saleId, "a bill"), requestId = visitRequestId(input.requestId);
     if (!Number.isSafeInteger(input.amountCents) || Number(input.amountCents) <= 0 || Number(input.amountCents) > 100000000)
         throw new FormError("Enter a valid payment amount.");
@@ -123,6 +124,7 @@ export async function recordCounterPayment(tx: DB, staff: VisitStaff, input: Rec
             throw new FormError("This payment request already saved different details.", 409);
         return { saleId, paymentId: existing.id, replayed: true };
     }
+    await assertNoPendingPayment(tx,staff.tenantId,[`sale:${saleId}`],execution.providerCheckoutId);
     if (sale.status !== "OPEN")
         throw new FormError("This bill is paid or voided.", 409);
     const settings = await settingsFor(tx, staff.tenantId), method = settings.paymentMethods.find(m => m.key === input.method && m.enabled && m.allowBalances);
@@ -137,7 +139,9 @@ export async function recordCounterPayment(tx: DB, staff: VisitStaff, input: Rec
         throw new FormError("Partial payments are disabled in Commerce Settings.");
     if (!settings.checkoutRules.allowSplitPayments && sale.payments.some(p => p.method !== input.method))
         throw new FormError("Additional split payments are disabled in Commerce Settings.");
-    const payment = await tx.counterPayment.create({ data: { tenantId: staff.tenantId, saleId, requestId, requestHash: hash, amountCents, method: input.method, methodLabel: method.label, notes, staffId: staff.employeeId, staffName: staff.name } });
+    if(amountCents===due&&sale.membership&&(sale.membership.tenantId!==staff.tenantId||sale.membership.familyId!==sale.familyId||sale.membership.status!=="PENDING"||(sale.membership.termsSnapshot as MemberTerms|null)?.version!==1))throw new FormError("The saved membership needs manager review before payment.",409);
+    if(execution.validateOnly)return {saleId,paymentId:"",replayed:false};
+    const payment = await tx.counterPayment.create({ data: { tenantId: staff.tenantId, saleId, requestId, requestHash: hash, amountCents, method: input.method, methodLabel: execution.sourceLabel??method.label, providerMode:execution.sourceMode??null, notes, staffId: staff.employeeId, staffName: staff.name } });
     if (amountCents === due) {
         await tx.counterSale.update({ where: { id: sale.id }, data: { status: "PAID" } });
         if (sale.membership) {
@@ -161,6 +165,7 @@ export async function voidCounterSale(tx: DB, staff: VisitStaff, input: Record<s
         throw new FormError("Bill not found.", 404);
     if (sale.status === "VOID")
         return { saleId, replayed: true };
+    await assertNoPendingPayment(tx,staff.tenantId,[`sale:${saleId}`]);
     if (sale.status !== "OPEN" || sale.payments.length)
         throw new FormError("Only unpaid bills can be voided. Payments need a refund workflow.", 409);
     await tx.counterSale.update({ where: { id: sale.id }, data: { status: "VOID", voidedAt: new Date(), voidedBy: staff.name, voidReason: input.reason.trim() } });
@@ -173,7 +178,7 @@ export async function voidCounterSale(tx: DB, staff: VisitStaff, input: Record<s
 
 // One externally collected amount can settle several existing family bills. Each
 // allocation retains its bill linkage; the whole collection commits or rolls back.
-export async function recordCheckoutPayment(tx: DB, staff: VisitStaff, input: Record<string, unknown>) {
+export async function recordCheckoutPayment(tx: DB, staff: VisitStaff, input: Record<string, unknown>,execution:PaymentExecution={}) {
     const familyId = recordId(input.familyId, "a family"), requestId = visitRequestId(input.requestId);
     if (!Array.isArray(input.bills) || !input.bills.length || input.bills.length > 20)
         throw new FormError("Choose one to twenty bills for this checkout.");
@@ -212,7 +217,7 @@ export async function recordCheckoutPayment(tx: DB, staff: VisitStaff, input: Re
     let remaining=amount;const paymentIds:string[]=[];
     for(const [index,bill] of bills.entries()){
         const allocated=Math.min(remaining,bill.dueCents);if(!allocated)break;
-        const result=await recordCounterPayment(tx,staff,{saleId:bill.id,amountCents:allocated,method:input.method,notes,requestId:requestIds[index],collectedAcknowledged:true},fingerprint);
+        const result=await recordCounterPayment(tx,staff,{saleId:bill.id,amountCents:allocated,method:input.method,notes,requestId:requestIds[index],collectedAcknowledged:true},fingerprint,execution);
         paymentIds.push(result.paymentId);remaining-=allocated;
     }
     return {saleIds:bills.map(b=>b.id),paymentIds,replayed:false};

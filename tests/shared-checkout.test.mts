@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import {test} from "node:test";
+import {createElement} from "react";
+import {renderToStaticMarkup} from "react-dom/server";
+import ControlsModule from "../src/components/counter/PaymentControls";
+import RegisterModule from "../src/components/counter/Register";
+import DialogModule from "../src/components/forms/SigningDialog";
+const Controls=(ControlsModule as any).default??ControlsModule,Register=(RegisterModule as any).default??RegisterModule,Dialog=(DialogModule as any).default??DialogModule;
+const props={busy:false,methods:[{key:"cash",label:"Cash"},{key:"card",label:"Card"}],method:"cash",onMethod:()=>{},amount:"10.00",onAmount:()=>{},onKey:()=>{},dueCents:1000,allowPartial:true,allowSplit:true,onSplit:()=>{},canPay:true,onPay:()=>{}};
+test("shared checkout controls retain Cash, Card, Split, keypad and the Pay button",()=>{const html=renderToStaticMarkup(createElement(Controls,props));for(const text of ["Cash","Card","Split","Onscreen number pad","Delete last digit","Exact amount","Pay $10.00"])assert.ok(html.includes(text),text);});
+test("payment controls disable collection and partial entry when unavailable",()=>{const html=renderToStaticMarkup(createElement(Controls,{...props,canPay:false,allowPartial:false,allowSplit:false}));assert.ok(!html.includes("⇄ Split"));assert.match(html,/disabled=""[^>]*>Pay \$10\.00/);assert.match(html,/aria-label="Payment amount in dollars" disabled=""/);});
+test("standalone register preserves product categories, snacks, custom charge and numeric controls",()=>{const html=renderToStaticMarkup(createElement(Register));for(const text of ["Snacks &amp; Retail","Custom Charge","Memberships","Admissions","Ordered Items","Cash","Card","Onscreen number pad","Pay $0.00"])assert.ok(html.includes(text),text);assert.ok(!html.includes("Gift Card"));});
+test("checkout dialog has a wide desktop option, mobile sizing, scrolling and visible Close",()=>{const html=renderToStaticMarkup(createElement(Dialog,{title:"Checkout",busy:false,onClose:()=>{},wide:true},"Content"));for(const text of ["96vw","h-dvh","overflow-y-auto","Close","Checkout"])assert.ok(html.includes(text),text);});

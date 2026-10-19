@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import type { CommerceSettingsPayload, PaymentMethodRule } from "@/lib/commerce-settings";
+import PartyCheckout from "@/components/counter/PartyCheckout";
 import {
   completeWorkflowStep,
   getNextWorkflowStep,
@@ -122,27 +122,15 @@ export default function PartyManagerPage() {
   const [activeIncidentAction, setActiveIncidentAction] = useState("");
   const [actionError, setActionError] = useState("");
   const [activePartyAction, setActivePartyAction] = useState("");
-  const [activePaymentAction, setActivePaymentAction] = useState("");
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRule[]>([]);
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [paymentNotes, setPaymentNotes] = useState("");
-  const [paymentPurpose, setPaymentPurpose] = useState<"DEPOSIT" | "BALANCE">("BALANCE");
-  const [depositAppliesToBalance, setDepositAppliesToBalance] = useState(true);
-  const paymentRequest = useRef("");
-  const paymentInFlight = useRef(false);
-  const availablePaymentMethods = paymentMethods.filter(method => paymentPurpose === "DEPOSIT" ? method.allowDeposits : method.allowBalances);
-  const effectivePaymentMethod = availablePaymentMethods.some(method => method.key === paymentMethod) ? paymentMethod : availablePaymentMethods[0]?.key ?? "";
-  const depositRemaining = party.depositStatus === "WAIVED" || party.depositStatus.endsWith("COLLECTED") ? 0 : Math.max(0, party.depositNumber - party.payments.filter(p => p.purpose === "DEPOSIT" && p.status === "PAID").reduce((sum, p) => sum + p.amount, 0));
-  const paymentDue = paymentPurpose === "DEPOSIT" ? (depositAppliesToBalance ? Math.min(party.balanceDueNumber, depositRemaining) : depositRemaining) : party.balanceDueNumber;
-  const effectivePaymentAmount = paymentAmount || Math.max(0, paymentDue).toFixed(2);
+  const lastWorkflow=useRef("");
+  const [checkoutOpen,setCheckoutOpen]=useState(false);
 
   const [guardrail, setGuardrail] = useState<Guardrail>(null);
   const [incidentForm, setIncidentForm] = useState<IncidentForm>(defaultIncidentForm);
 
   const loadParty = useCallback(async (options?: { silent?: boolean }) => {
     try {
-      if (!options?.silent) setLoadingEvent(true);
+      void options;
       const response = await fetch("/api/events", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to load party.");
@@ -153,7 +141,12 @@ export default function PartyManagerPage() {
         const linksData=await linksResponse.json();
         if(linksResponse.ok){event.hostToken=linksData.hostToken;event.inviteUrl=linksData.inviteUrl;}
       }
-      setParty(normalizeEventToParty(event));
+      const normalized=normalizeEventToParty(event);
+      setParty(normalized);
+      if(normalized.rawStatus!=="CANCELLED"&&lastWorkflow.current!==normalized.workflowStep){
+        const stageCardMap:Partial<Record<PartyWorkflowStepKey,string>>={CHECK_IN:"guests",PARTY_TIME:"timeline",PAYMENT:"money",CLEANUP:"timeline"};
+        const card=stageCardMap[normalized.workflowStep];if(card)setOpenCard(card);lastWorkflow.current=normalized.workflowStep;
+      }
 
       const incidentsResponse = await fetch(`/api/events/${eventId}/incidents`, { cache: "no-store" });
       const incidentsData = await incidentsResponse.json();
@@ -161,30 +154,11 @@ export default function PartyManagerPage() {
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Unable to load party.");
     } finally {
-      if (!options?.silent) setLoadingEvent(false);
+      setLoadingEvent(false);
     }
   }, [eventId]);
 
-  useEffect(() => { loadParty(); const refreshTimer = window.setInterval(() => loadParty({ silent: true }), 5000); return () => window.clearInterval(refreshTimer); }, [loadParty]);
-
-  useEffect(() => {
-    async function loadCommerceSettings() {
-      try {
-        const response = await fetch("/api/company-settings/commerce", { cache: "no-store" });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Unable to load commerce settings.");
-        const settings = data.commerceSettings as CommerceSettingsPayload;
-        const enabledMethods = (settings.paymentMethods ?? []).filter((method) => method.enabled && (method.allowBalances || method.allowDeposits));
-        setDepositAppliesToBalance(settings.depositRules.applyDepositToBalance);
-        setPaymentMethods(enabledMethods);
-        setPaymentMethod((current) => current || enabledMethods[0]?.key || "");
-      } catch (error) {
-        setActionError(error instanceof Error ? error.message : "Unable to load commerce settings.");
-      }
-    }
-
-    loadCommerceSettings();
-  }, []);
+  useEffect(() => { Promise.resolve().then(()=>loadParty()); const refreshTimer = window.setInterval(() => loadParty({ silent: true }), 5000); return () => window.clearInterval(refreshTimer); }, [loadParty]);
 
   const selectedPartyEventType = { color: "#FFB768" };
   const currentStep = getWorkflowStep(party.workflowStep);
@@ -198,21 +172,6 @@ export default function PartyManagerPage() {
     if (!cleanQuery) return party.guests;
     return party.guests.filter((guest) => guest.name.toLowerCase().includes(cleanQuery) || guest.parentName.toLowerCase().includes(cleanQuery) || guest.email.toLowerCase().includes(cleanQuery) || guest.phone.toLowerCase().includes(cleanQuery) || guest.status.toLowerCase().includes(cleanQuery) || guest.waiver.toLowerCase().includes(cleanQuery));
   }, [guestSearchQuery, party.guests]);
-
-  useEffect(() => {
-    if (loadingEvent) return;
-    if (party.rawStatus === "CANCELLED") return;
-
-    const stageCardMap: Partial<Record<PartyWorkflowStepKey, string>> = {
-      CHECK_IN: "guests",
-      PARTY_TIME: "timeline",
-      PAYMENT: "money",
-      CLEANUP: "timeline",
-    };
-
-    const nextOpenCard = stageCardMap[party.workflowStep];
-    if (nextOpenCard) setOpenCard(nextOpenCard);
-  }, [loadingEvent, party.rawStatus, party.workflowStep]);
 
   async function copyInviteLink() { if (!party.inviteUrl) return; try { await navigator.clipboard.writeText(party.inviteUrl); setCopyStatus("Copied!"); window.setTimeout(() => setCopyStatus(""), 1800); } catch { setCopyStatus("Copy failed"); window.setTimeout(() => setCopyStatus(""), 1800); } }
   async function copyConfirmationLink() { if (!party.confirmationUrl) return; try { await navigator.clipboard.writeText(party.confirmationUrl); setCopyStatus("Confirmation copied!"); window.setTimeout(() => setCopyStatus(""), 1800); } catch { setCopyStatus("Copy failed"); window.setTimeout(() => setCopyStatus(""), 1800); } }
@@ -290,41 +249,6 @@ export default function PartyManagerPage() {
     }
   }
 
-  async function submitPayment() {
-    if (paymentInFlight.current) return;
-    paymentInFlight.current = true;
-    if (!paymentRequest.current) paymentRequest.current = crypto.randomUUID();
-    let recorded = false;
-    setActivePaymentAction("collect");
-    setActionError("");
-    try {
-      const response = await fetch(`/api/events/${party.id}/payments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requestId: paymentRequest.current,
-          purpose: paymentPurpose,
-          amount: effectivePaymentAmount,
-          method: effectivePaymentMethod,
-          notes: paymentNotes,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to submit payment.");
-      recorded = true;
-      paymentRequest.current = "";
-      setPaymentNotes("");
-      setPaymentAmount("");
-      await loadParty({ silent: true });
-      setOpenCard("money");
-    } catch (error) {
-      setActionError(recorded ? "Payment recorded. Refresh to see the updated balance before recording another payment." : error instanceof Error ? error.message : "Unable to record payment.");
-    } finally {
-      paymentInFlight.current = false;
-      setActivePaymentAction("");
-    }
-  }
-
   return (
     <main className="h-screen overflow-hidden bg-[#E7E3DA] p-5 text-[#202633] antialiased">
       <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] bg-[#F6F0E6] shadow-sm">
@@ -393,7 +317,7 @@ export default function PartyManagerPage() {
                 </section>
 
                 {openCard === "guests" && <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4"><div className="mb-3 flex items-start justify-between gap-4"><div><h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Guest Check-In + Waivers</h3><p className="mt-1 text-sm text-[#6B7280]">Run check-in, check-out, no-shows, and waiver status from this party.</p></div><span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#1E293B]">{party.guests.length} added</span></div><div className="mb-4 rounded-[10px] border border-black/10 bg-white p-4"><input value={guestSearchQuery} onChange={(event) => setGuestSearchQuery(event.target.value)} className="w-full rounded-[8px] border border-black/10 bg-[#F6F0E6] px-4 py-3 text-sm outline-none" placeholder="Search child, parent, phone, email, status..." /></div>{visibleGuests.length > 0 ? <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">{visibleGuests.map((guest) => <div key={guest.id} className="rounded-[10px] bg-white p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#1E293B]">{guest.name}</p><p className="mt-1 text-xs text-[#6B7280]">{guest.parentName || "Parent pending"}</p></div><div className="flex flex-col items-end gap-1"><span className={`rounded-full px-3 py-1 text-xs font-semibold ${getGuestStatusStyles(guest.status)}`}>{guest.status}</span><span className={`rounded-full px-3 py-1 text-xs font-semibold ${getWaiverStyles(guest.waiver)}`}>Waiver {guest.waiver}</span></div></div><div className="mt-3 grid grid-cols-3 gap-2"><button disabled={guest.status === "Checked In" || guest.status === "Checked Out" || guest.status === "No Show" || activeGuestAction === `${guest.id}:check-in` || party.rawStatus === "CANCELLED"} onClick={() => runGuestAction(guest, "check-in")} className="rounded-[8px] bg-[#7BAE7F] px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{activeGuestAction === `${guest.id}:check-in` ? "..." : "Check In"}</button><button disabled={guest.status !== "Checked In" || activeGuestAction === `${guest.id}:check-out` || party.rawStatus === "CANCELLED"} onClick={() => runGuestAction(guest, "check-out")} className="rounded-[8px] border border-[#B7D4FF] bg-[#EEF5FF] px-3 py-2 text-xs font-semibold text-[#0B55C6] disabled:opacity-40">{activeGuestAction === `${guest.id}:check-out` ? "..." : "Check Out"}</button><button disabled={guest.status !== "Expected" || activeGuestAction === `${guest.id}:no-show` || party.rawStatus === "CANCELLED"} onClick={() => runGuestAction(guest, "no-show")} className="rounded-[8px] border border-black/10 bg-[#F6F0E6] px-3 py-2 text-xs font-semibold text-[#4B5563] disabled:opacity-40">{activeGuestAction === `${guest.id}:no-show` ? "..." : "No Show"}</button></div>{guest.checkedInAt && <p className="mt-2 text-[11px] text-[#6B7280]">Checked in: {formatShortTime(guest.checkedInAt)}{guest.checkedOutAt ? ` • Checked out: ${formatShortTime(guest.checkedOutAt)}` : ""}</p>}</div>)}</div> : <div className="rounded-[10px] border border-dashed border-black/20 bg-white/70 p-6 text-center"><p className="font-semibold text-[#1E293B]">No guests found</p><p className="mt-2 text-sm text-[#6B7280]">Send the RSVP link so guests can add themselves before the party.</p></div>}</section>}
-                {openCard === "money" && <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4"><div className="mb-4 flex items-start justify-between gap-4"><div><h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Payments + Checkout</h3><p className="mt-1 text-sm text-[#6B7280]">Record payments already received. This does not charge a card.</p></div>{party.balanceDueNumber <= 0 && <span className="rounded-full bg-[#D7F1EC] px-3 py-1 text-xs font-semibold text-[#155E75]">Paid</span>}</div><div className="grid grid-cols-1 gap-3 lg:grid-cols-3"><div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Deposit</p><p className="mt-2 font-semibold text-[#155E75]">{party.deposit}</p><p className="mt-1 text-xs text-[#6B7280]">{getDepositBadge(party.depositStatus)}</p></div><div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Balance Due</p><p className={`mt-2 font-semibold ${party.balanceDueNumber > 0 ? "text-[#9F1239]" : "text-[#155E75]"}`}>{party.balanceDueNumber > 0 ? party.balanceDue : "$0.00"}</p><p className="mt-1 text-xs text-[#6B7280]">{party.balanceDueNumber > 0 ? "Due at checkout" : "Balance paid"}</p></div><div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Payment Methods</p><p className="mt-2 font-semibold text-[#1E293B]">{paymentMethods.length}</p><p className="mt-1 text-xs text-[#6B7280]">Enabled in Commerce Settings</p></div></div><div className="mt-4 rounded-[10px] bg-white p-4"><label className="mb-4 block text-xs font-semibold text-[#6B7280]">Payment Type<select value={paymentPurpose} disabled={Boolean(activePaymentAction)} onChange={event => { const purpose = event.target.value as "DEPOSIT" | "BALANCE"; setPaymentPurpose(purpose); setPaymentAmount(""); }} className="mt-2 block rounded-lg border p-3"><option value="BALANCE">Balance payment</option><option value="DEPOSIT" disabled={party.depositStatus === "WAIVED" || party.depositStatus.endsWith("COLLECTED")}>Deposit payment</option></select></label><div className="grid grid-cols-1 gap-3 xl:grid-cols-[160px_180px_minmax(0,1fr)_auto]"><label className="text-xs font-semibold text-[#6B7280]">Payment Amount<input value={effectivePaymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} type="number" min="0" step="0.01" disabled={Boolean(activePaymentAction) || paymentDue <= 0 || party.rawStatus === "CANCELLED"} className="mt-2 w-full rounded-[8px] border border-black/10 bg-[#F6F0E6] px-3 py-3 text-sm text-[#1E293B] outline-none disabled:opacity-50" /></label><label className="text-xs font-semibold text-[#6B7280]">Payment Method<select value={effectivePaymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} disabled={Boolean(activePaymentAction) || availablePaymentMethods.length === 0 || paymentDue <= 0 || party.rawStatus === "CANCELLED"} className="mt-2 w-full rounded-[8px] border border-black/10 bg-[#F6F0E6] px-3 py-3 text-sm text-[#1E293B] outline-none disabled:opacity-50">{availablePaymentMethods.length > 0 ? availablePaymentMethods.map((method) => <option key={method.key} value={method.key}>{method.label}</option>) : <option value="">No methods enabled</option>}</select></label><label className="text-xs font-semibold text-[#6B7280]">Optional Notes<input value={paymentNotes} onChange={(event) => setPaymentNotes(event.target.value)} disabled={Boolean(activePaymentAction) || paymentDue <= 0 || party.rawStatus === "CANCELLED"} className="mt-2 w-full rounded-[8px] border border-black/10 bg-[#F6F0E6] px-3 py-3 text-sm text-[#1E293B] outline-none disabled:opacity-50" placeholder="Reference, cash drawer note, or staff note" /></label><button onClick={submitPayment} disabled={activePaymentAction === "collect" || paymentDue <= 0 || availablePaymentMethods.length === 0 || !effectivePaymentMethod || party.rawStatus === "CANCELLED"} className="self-end rounded-[10px] bg-[#1E293B] px-5 py-3 text-sm font-semibold text-white disabled:opacity-40">{activePaymentAction === "collect" ? "Submitting..." : "Record Payment"}</button></div></div><p className="mt-3 text-xs text-[#6B7280]">Deposit still due: {formatCurrency(depositRemaining)}. Check the history before starting another payment after a connection error.</p><button disabled={Boolean(activePaymentAction)} onClick={() => { paymentRequest.current = ""; setPaymentAmount(""); setPaymentNotes(""); setActionError(""); }} className="mt-2 text-sm underline">Start a new payment</button><div className="mt-4"><div className="mb-3 flex items-center justify-between"><h4 className="text-sm font-semibold text-[#1E293B]">Payment History</h4><span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#1E293B]">{party.payments.length}</span></div>{party.payments.length > 0 ? <div className="space-y-2">{party.payments.map((payment) => <div key={payment.id} className="grid grid-cols-1 gap-3 rounded-[10px] bg-white px-4 py-3 text-sm xl:grid-cols-[150px_120px_100px_minmax(0,1fr)_80px]"><div><p className="text-xs font-semibold text-[#6B7280]">Date / Time</p><p className="mt-1 font-semibold text-[#1E293B]">{formatTimelineTime(payment.collectedAt)}</p></div><div><p className="text-xs font-semibold text-[#6B7280]">Amount</p><p className="mt-1 font-semibold text-[#155E75]">{formatCurrency(payment.amount)}</p></div><div><p className="text-xs font-semibold text-[#6B7280]">Method</p><p className="mt-1 font-semibold text-[#1E293B]">{getPaymentMethodLabel(payment.method)}<span className="block text-xs text-[#6B7280]">{payment.purpose === "DEPOSIT" ? "Deposit" : "Balance"}</span></p></div><div><p className="text-xs font-semibold text-[#6B7280]">Notes</p><p className="mt-1 text-[#1E293B]">{payment.notes || "No notes"}</p></div><div><p className="text-xs font-semibold text-[#6B7280]">Staff</p><p className="mt-1 font-semibold text-[#1E293B]">{payment.staff || "Staff"}</p></div></div>)}</div> : <div className="rounded-[10px] border border-dashed border-black/20 bg-white/70 p-6 text-center"><p className="font-semibold text-[#1E293B]">No payments recorded yet</p><p className="mt-2 text-sm text-[#6B7280]">Recorded deposit and balance payments will appear here.</p></div>}</div></section>}
+                {openCard === "money" && <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4"><div className="mb-4 flex items-start justify-between gap-4"><div><h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Payments + Checkout</h3><p className="mt-1 text-sm text-[#6B7280]">Record payments already received. This does not charge a card.</p></div>{party.balanceDueNumber <= 0 && <span className="rounded-full bg-[#D7F1EC] px-3 py-1 text-xs font-semibold text-[#155E75]">Paid</span>}</div><div className="grid grid-cols-1 gap-3 lg:grid-cols-3"><div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Deposit</p><p className="mt-2 font-semibold text-[#155E75]">{party.deposit}</p><p className="mt-1 text-xs text-[#6B7280]">{getDepositBadge(party.depositStatus)}</p></div><div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Balance Due</p><p className={`mt-2 font-semibold ${party.balanceDueNumber > 0 ? "text-[#9F1239]" : "text-[#155E75]"}`}>{party.balanceDueNumber > 0 ? party.balanceDue : "$0.00"}</p><p className="mt-1 text-xs text-[#6B7280]">{party.balanceDueNumber > 0 ? "Due at checkout" : "Balance paid"}</p></div><div className="rounded-[10px] bg-white p-4"><p className="text-xs font-semibold text-[#6B7280]">Checkout</p><button onClick={()=>setCheckoutOpen(true)} disabled={party.rawStatus==="CANCELLED"} className="mt-3 rounded-xl bg-[#20B8A8] px-5 py-3 font-semibold text-white disabled:opacity-40">Open checkout</button><p className="mt-2 text-xs">Deposit, balance, split payments and family extras.</p></div></div><div className="mt-4"><div className="mb-3 flex items-center justify-between"><h4 className="text-sm font-semibold text-[#1E293B]">Payment History</h4><span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#1E293B]">{party.payments.length}</span></div>{party.payments.length > 0 ? <div className="space-y-2">{party.payments.map((payment) => <div key={payment.id} className="grid grid-cols-1 gap-3 rounded-[10px] bg-white px-4 py-3 text-sm xl:grid-cols-[150px_120px_100px_minmax(0,1fr)_80px]"><div><p className="text-xs font-semibold text-[#6B7280]">Date / Time</p><p className="mt-1 font-semibold text-[#1E293B]">{formatTimelineTime(payment.collectedAt)}</p></div><div><p className="text-xs font-semibold text-[#6B7280]">Amount</p><p className="mt-1 font-semibold text-[#155E75]">{formatCurrency(payment.amount)}</p></div><div><p className="text-xs font-semibold text-[#6B7280]">Method</p><p className="mt-1 font-semibold text-[#1E293B]">{getPaymentMethodLabel(payment.method)}<span className="block text-xs text-[#6B7280]">{payment.purpose === "DEPOSIT" ? "Deposit" : "Balance"}</span></p></div><div><p className="text-xs font-semibold text-[#6B7280]">Notes</p><p className="mt-1 text-[#1E293B]">{payment.notes || "No notes"}</p></div><div><p className="text-xs font-semibold text-[#6B7280]">Staff</p><p className="mt-1 font-semibold text-[#1E293B]">{payment.staff || "Staff"}</p></div></div>)}</div> : <div className="rounded-[10px] border border-dashed border-black/20 bg-white/70 p-6 text-center"><p className="font-semibold text-[#1E293B]">No payments recorded yet</p><p className="mt-2 text-sm text-[#6B7280]">Recorded deposit and balance payments will appear here.</p></div>}</div></section>}
                 {openCard === "timeline" && <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4"><div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Event Timeline</h3><span className="rounded-full bg-white px-3 py-1 text-xs font-semibold">{party.timelineItems.length}</span></div><div className="space-y-3">{party.timelineItems.length > 0 ? party.timelineItems.map((item) => <div key={item.id} className="flex gap-3 rounded-[8px] bg-white p-3"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F6F0E6] text-xs font-semibold">{item.icon || "•"}</div><div><p className="text-sm font-semibold text-[#1E293B]">{item.title}</p><p className="mt-1 text-xs text-[#6B7280]">{formatTimelineTime(item.createdAt)}</p>{item.body && <p className="mt-1 text-xs text-[#6B7280]">{item.body}</p>}</div></div>) : <div className="rounded-[8px] bg-white p-4 text-sm text-[#6B7280]">Timeline will appear here as staff runs the event.</div>}</div></section>}
                 {openCard === "incidents" && <section className="rounded-[12px] border border-black/10 bg-[#F6F0E6] p-4"><div className="mb-4 flex items-start justify-between gap-4"><div><h3 className="text-lg font-semibold tracking-[-0.03em] text-[#1E293B]">Incidents + Event Log</h3><p className="mt-1 text-sm text-[#6B7280]">Record injuries, damaged items, behavior issues, lost items, complaints, or staff notes for this party.</p></div><span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#1E293B]">{incidents.length} logged</span></div><div className="rounded-[10px] bg-white p-4"><div className="grid grid-cols-1 gap-3 xl:grid-cols-4"><label className="text-xs font-semibold text-[#6B7280]">Type<select value={incidentForm.incidentType} onChange={(event) => setIncidentForm((current) => ({ ...current, incidentType: event.target.value }))} className="mt-2 w-full rounded-[8px] border border-black/10 bg-[#F6F0E6] px-3 py-3 text-sm text-[#1E293B] outline-none">{incidentTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label><label className="text-xs font-semibold text-[#6B7280]">Severity<select value={incidentForm.severity} onChange={(event) => setIncidentForm((current) => ({ ...current, severity: event.target.value }))} className="mt-2 w-full rounded-[8px] border border-black/10 bg-[#F6F0E6] px-3 py-3 text-sm text-[#1E293B] outline-none">{severityOptions.map((severity) => <option key={severity} value={severity}>{severity}</option>)}</select></label><label className="text-xs font-semibold text-[#6B7280]">Guest / Child<input value={incidentForm.guestName} onChange={(event) => setIncidentForm((current) => ({ ...current, guestName: event.target.value }))} className="mt-2 w-full rounded-[8px] border border-black/10 bg-[#F6F0E6] px-3 py-3 text-sm text-[#1E293B] outline-none" placeholder="Optional" /></label><label className="text-xs font-semibold text-[#6B7280]">Staff Member<input value={incidentForm.staffMember} onChange={(event) => setIncidentForm((current) => ({ ...current, staffMember: event.target.value }))} className="mt-2 w-full rounded-[8px] border border-black/10 bg-[#F6F0E6] px-3 py-3 text-sm text-[#1E293B] outline-none" placeholder="Optional" /></label></div><label className="mt-3 block text-xs font-semibold text-[#6B7280]">Description<textarea value={incidentForm.description} onChange={(event) => setIncidentForm((current) => ({ ...current, description: event.target.value }))} className="mt-2 min-h-[120px] w-full rounded-[8px] border border-black/10 bg-[#F6F0E6] px-3 py-3 text-sm text-[#1E293B] outline-none" placeholder="Describe what happened, who was involved, and what staff did next." /></label><button disabled={activeIncidentAction === "create" || !incidentForm.description.trim() || party.rawStatus === "CANCELLED"} onClick={createIncidentReport} className="mt-3 rounded-[10px] bg-[#1E293B] px-5 py-3 text-sm font-semibold text-white disabled:opacity-40">{activeIncidentAction === "create" ? "Creating..." : "Create Incident Report"}</button></div><div className="mt-4 space-y-3">{incidents.length > 0 ? incidents.map((incident) => <div key={incident.id} className="rounded-[10px] bg-white p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#1E293B]">{incident.incidentType}</p><p className="mt-1 text-xs text-[#6B7280]">{formatTimelineTime(incident.createdAt)}{incident.guestName ? ` • ${incident.guestName}` : ""}{incident.staffMember ? ` • Staff: ${incident.staffMember}` : ""}</p></div><div className="flex gap-2"><span className={`rounded-full px-3 py-1 text-xs font-semibold ${getSeverityStyles(incident.severity)}`}>{incident.severity}</span><span className="rounded-full bg-[#F1F1F1] px-3 py-1 text-xs font-semibold text-[#4B5563]">{incident.status}</span></div></div><p className="mt-3 text-sm leading-6 text-[#1E293B]">{incident.description}</p></div>) : <div className="rounded-[10px] border border-dashed border-black/20 bg-white/70 p-6 text-center"><p className="font-semibold text-[#1E293B]">No incidents logged</p><p className="mt-2 text-sm text-[#6B7280]">Create a report if something happens during this party.</p></div>}</div></section>}
               </div>
@@ -410,6 +334,7 @@ export default function PartyManagerPage() {
         </section>
       </div>
 
+      {checkoutOpen&&<PartyCheckout eventId={party.id} onClose={()=>setCheckoutOpen(false)} onChanged={()=>{loadParty({silent:true});}}/>}
       {guardrail && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="w-full max-w-md rounded-[18px] bg-white p-6 shadow-xl"><p className="text-sm font-semibold text-[#8A6D3B]">Guardrail</p><h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#1E293B]">{guardrail.type === "cancel" ? `Cancel ${party.title}?` : guardrail.type === "complete" ? `Complete ${party.title}?` : guardrail.step?.confirmationTitle}</h2><p className="mt-3 text-sm leading-6 text-[#6B7280]">{guardrail.type === "cancel" ? "This will remove the party from the active dashboard. The booking, guest list, timeline, payments, and incident reports will be preserved." : guardrail.type === "complete" ? "This closes the party workflow and moves it out of active operations. Records, guests, payments, incident reports, and timeline history stay preserved." : guardrail.step?.confirmationBody}</p><div className="mt-4 rounded-[12px] bg-[#F6F0E6] p-4 text-sm"><p className="font-semibold text-[#1E293B]">{party.date}</p><p className="mt-1 text-[#6B7280]">{party.time}</p></div><div className="mt-6 grid grid-cols-2 gap-3"><button onClick={() => setGuardrail(null)} className="rounded-[10px] border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#1E293B]">Not Yet</button><button onClick={() => guardrail.type === "cancel" ? cancelParty() : guardrail.type === "complete" ? runPartyWorkflowAction("complete") : runPartyWorkflowAction("advance")} disabled={Boolean(activePartyAction)} className={`rounded-[10px] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 ${guardrail.type === "cancel" ? "bg-[#9F1239]" : "bg-[#1E293B]"}`}>{activePartyAction ? "Working..." : guardrail.type === "cancel" ? "Yes, Cancel Party" : guardrail.type === "complete" ? "Complete Party" : guardrail.step?.nextActionLabel}</button></div></div></div>}
     </main>
   );

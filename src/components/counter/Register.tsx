@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import SigningDialog from "@/components/forms/SigningDialog";
+import PendingSquarePayments from "./PendingSquarePayments";
+import SquareCardPayment from "./SquareCardPayment";
+import PaymentControls from "./PaymentControls";
 import CounterPanel from "./CounterPanel";
 import type {ProductEntry,CustomEntry} from "@/lib/counter/products";
 import type {CounterQuote} from "@/lib/counter/quote";
@@ -28,7 +31,8 @@ async function post(body: object) {
   return result;
 }
 
-export default function Register() {
+export default function Register({initialFamilyId, initialSaleId, onChanged, onBusyChange}: {initialFamilyId?:string;initialSaleId?:string;onChanged?:()=>void;onBusyChange?:(busy:boolean)=>void} = {}) {
+  const [squareOpen,setSquareOpen]=useState(false);
   const [family, setFamily] = useState<DeskFamily | null>(null);
   const [data, setData] = useState<Overview | null>(null);
   const [cart, setCart] = useState<CounterReceipt[]>([]);
@@ -49,6 +53,17 @@ export default function Register() {
   const replaceEntry = useRef(true);
   const selectedFamily = useRef(""), paymentId = useRef(""), billRequest = useRef<{ visit: string; id: string } | null>(null);
 
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
+  useEffect(() => {
+    if (!initialFamilyId) return;
+    const controller = new AbortController();
+    selectedFamily.current = initialFamilyId;
+    Promise.all([
+      fetch(`/api/check-in?familyId=${encodeURIComponent(initialFamilyId)}`, {cache:"no-store",signal:controller.signal}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||"Unable to load family.");return d;}),
+      fetch(`/api/counter?familyId=${encodeURIComponent(initialFamilyId)}`, {cache:"no-store",signal:controller.signal}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||"Unable to load bills.");return d as Overview;}),
+    ]).then(([f,d])=>{setFamily(f.family);setData(d);setMethod(d.paymentMethods[0]?.key??"");const bills=d.sales.filter(s=>s.status==="OPEN"&&(!initialSaleId||s.id===initialSaleId));setCart(bills);const summary=checkoutSummary(bills);setAmount(((summary?summary.totalCents-paidCents(summary):0)/100).toFixed(2));}).catch(e=>{if(!controller.signal.aborted)setError(e.message);});
+    return ()=>controller.abort();
+  }, [initialFamilyId,initialSaleId]);
   async function loadCatalog(){
     const response=await fetch("/api/counter/catalog",{cache:"no-store"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Unable to load products.");setProducts(result.products);setCanManage(result.canManage);
   }
@@ -61,11 +76,11 @@ export default function Register() {
   },[draft,cart,products]);
   function changeDraft(next:typeof draft){replaceEntry.current=true;setDraft(next);setDraftQuote(null);setQuoteLoading(!!(next.products.length+next.custom.length));draftRequest.current="";paymentId.current="";setError("");if(!next.products.length&&!next.custom.length)setAmount((sale?(sale.totalCents-paidCents(sale))/100:0).toFixed(2));}
   function productQuantity(id:string,quantity:number){changeDraft({...draft,products:[...draft.products.filter(p=>p.productId!==id),...(quantity>0?[{productId:id,quantity:Math.min(99,quantity)}]:[])]});}
-  async function preparePayment(){
+  async function preparePayment(channel:"manual"|"square"="manual"){
     if(!family)return;
-    if(!hasDraft){setCollected(false);setError("");setConfirming(true);return;}
+    if(!hasDraft){setCollected(false);setError("");if(channel==="square")setSquareOpen(true);else setConfirming(true);return;}
     if(!draftQuote)return;setBusy(true);setError("");if(!draftRequest.current)draftRequest.current=crypto.randomUUID();
-    try{const result=await post({action:"create-cart",familyId:family.id,...draft,quoteHash:draftQuote.quoteHash,requestId:draftRequest.current});const created=result.receipt as CounterReceipt;const previousAmount=amount;const next=addCheckoutSale(cart,created);setDraft({products:[],custom:[]});setDraftQuote(null);setQuoteLoading(false);draftRequest.current="";updateCart(next);editAmount(previousAmount);if(created.status==="PAID"&&!next.length){setReceipt(created);setNotice("Zero-total sale saved. No payment collected.");}else{setCollected(false);setConfirming(true);}await load(family.id);}catch(e){setError(e instanceof Error?e.message:"Unable to save checkout.");}finally{setBusy(false);}
+    try{const result=await post({action:"create-cart",familyId:family.id,...draft,quoteHash:draftQuote.quoteHash,requestId:draftRequest.current});const created=result.receipt as CounterReceipt;const previousAmount=amount;const next=addCheckoutSale(cart,created);setDraft({products:[],custom:[]});setDraftQuote(null);setQuoteLoading(false);draftRequest.current="";updateCart(next);editAmount(previousAmount);if(created.status==="PAID"&&!next.length){setReceipt(created);setNotice("Zero-total sale saved. No payment collected.");}else{setCollected(false);if(channel==="square")setSquareOpen(true);else setConfirming(true);}await load(family.id);}catch(e){setError(e instanceof Error?e.message:"Unable to save checkout.");}finally{setBusy(false);}
   }
   useEffect(() => {
     if (!familyOpen || query.trim().length < 2) return;
@@ -99,7 +114,7 @@ export default function Register() {
   }
   async function choose(id: string) {
     selectedFamily.current = id; setBusy(true); setError("");
-    try { const d = await load(id); updateCart([]); setMethod(d.paymentMethods[0]?.key ?? ""); setFamilyOpen(false); setNotice(""); }
+    try { const d = await load(id); setDraft({products:[],custom:[]});setDraftQuote(null);setQuoteLoading(false);draftRequest.current="";updateCart([]); setMethod(d.paymentMethods[0]?.key ?? ""); setFamilyOpen(false); setNotice(""); }
     catch (e) { setError(e instanceof Error ? e.message : "Unable to load family."); }
     finally { setBusy(false); }
   }
@@ -141,12 +156,14 @@ export default function Register() {
       const receipts=result.receipts as CounterReceipt[];
       updateCart(receipts.filter(s=>s.status==="OPEN"));
       setReceipt(checkoutSummary(receipts,`checkout-${reference}`));
+      onChanged?.();
       await load(family.id);
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to save. Retry the same payment."); }
     finally { setBusy(false); }
   }
 
   return <>
+    {family&&<PendingSquarePayments familyId={family.id} onChanged={()=>{refresh().catch(e=>setError(e.message));onChanged?.();}}/>}
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap gap-2">
         <button disabled={busy} onClick={() => { setError(""); setFamilyOpen(true); }} className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold">{family ? family.name : "Select customer / family"} <span aria-hidden="true">⌄</span></button>
@@ -178,17 +195,14 @@ export default function Register() {
           <div className="public-scroll max-h-48 space-y-3 overflow-y-auto"><h3 className="text-sm font-semibold">Ordered Items{cart.length?` · ${cart.length} selected ${cart.length===1?"sale":"sales"}`:""}</h3>{sale ? cart.map(item=><div key={item.id} className="space-y-2 border-b pb-3">{item.quoteSnapshot.lines.map(l => <div key={l.id} className="flex justify-between gap-3 text-sm"><span>{l.label}</span><span className="shrink-0 font-semibold">{dollars(l.priceCents)}</span></div>)}<button disabled={busy} onClick={()=>updateCart(cart.filter(s=>s.id!==item.id))} className="text-xs font-semibold text-rose-800 underline">Remove from checkout</button></div>) : !hasDraft&&<p className="rounded-lg border border-dashed bg-[#F6F0E6] p-5 text-center text-sm text-gray-500">Cart is empty. Select one or more children / sales to begin.</p>}{draft.products.map(item=>{const p=products.find(p=>p.id===item.productId);return <div key={item.productId} className="space-y-2 border-b pb-3 text-sm"><div className="flex justify-between gap-3"><strong>{draftQuote?.quote.lines.find(l=>l.id===`product:${item.productId}`)?.label??`${item.quantity}× ${p?.name??"Product"}`}</strong><span>{dollars(draftQuote?.quote.lines.find(l=>l.id===`product:${item.productId}`)?.priceCents??(p?.priceCents??0)*item.quantity)}</span></div><div className="flex items-center gap-3"><button aria-label={`Remove one ${p?.name??"product"}`} disabled={busy} onClick={()=>productQuantity(item.productId,item.quantity-1)} className="rounded-lg border px-3 py-1">−</button><span>{item.quantity}</span><button aria-label={`Add one ${p?.name??"product"}`} disabled={busy||item.quantity>=99} onClick={()=>productQuantity(item.productId,item.quantity+1)} className="rounded-lg border px-3 py-1">+</button><button disabled={busy} onClick={()=>productQuantity(item.productId,0)} className="text-xs text-rose-800 underline">Remove</button></div></div>;})}{draft.custom.map(item=><div key={item.id} className="flex items-start justify-between gap-3 border-b pb-3 text-sm"><span><strong>{item.quantity}× {item.name}</strong><button disabled={busy} onClick={()=>changeDraft({...draft,custom:draft.custom.filter(c=>c.id!==item.id)})} className="mt-2 block text-xs text-rose-800 underline">Remove</button></span><span>{dollars(item.amountCents*item.quantity)}</span></div>)}</div>
           {quoteLoading&&<p role="status" className="text-xs">Calculating prices, taxes & fees…</p>}
           <dl className="space-y-2 border-t pt-4 text-sm"><div className="flex justify-between"><dt>Subtotal</dt><dd>{dollars((sale?.quoteSnapshot.subtotalCents ?? 0)+(draftQuote?.quote.subtotalCents??0))}</dd></div><div className="flex justify-between"><dt>Fees</dt><dd>{dollars((sale?.quoteSnapshot.feeCents ?? 0)+(draftQuote?.quote.feeCents??0))}</dd></div><div className="flex justify-between"><dt>Added tax</dt><dd>{dollars((sale?.quoteSnapshot.taxCents ?? 0)+(draftQuote?.quote.taxCents??0))}</dd></div>{!!((sale?.quoteSnapshot.includedTaxCents??0)+(draftQuote?.quote.includedTaxCents??0)) && <div className="flex justify-between"><dt>Tax included</dt><dd>{dollars((sale?.quoteSnapshot.includedTaxCents??0)+(draftQuote?.quote.includedTaxCents??0))}</dd></div>}{!!sale && paidCents(sale) > 0 && <div className="flex justify-between"><dt>Already paid</dt><dd>{dollars(paidCents(sale))}</dd></div>}<div className="flex items-center justify-between border-t pt-3"><dt className="font-semibold">Total Payable</dt><dd className="text-3xl font-semibold tracking-tight">{dollars(due)}</dd></div></dl>
-          <fieldset disabled={busy} className="space-y-2"><legend className="mb-2 text-sm font-semibold">Payment Method</legend><div className="grid grid-cols-3 gap-2">{(data?.paymentMethods ?? [{ key: "cash", label: "Cash" }, { key: "card", label: "Card" }]).map(m => <button key={m.key} type="button" aria-pressed={method === m.key} onClick={() => { setMethod(m.key); paymentId.current = ""; }} className={`rounded-xl border px-2 py-3 text-sm font-semibold ${method === m.key ? "border-[#20B8A8] bg-[#E8F8F5]" : "border-black/10 bg-[#F6F0E6]"}`}><span className="mb-1 block text-lg" aria-hidden="true">{m.key === "cash" ? "💵" : m.key === "card" ? "💳" : "⇄"}</span>{m.label}</button>)}{data?.allowPartialPayments && data.allowSplitPayments && <button type="button" onClick={() => { editAmount(""); setNotice("Split payment: enter the first amount and payment method. After recording it, pay the remaining balance with the next method."); }} className="rounded-xl border border-[#B99AFF] bg-[#EEE7FF] px-2 py-3 text-sm font-semibold">⇄ Split</button>}</div></fieldset>
-          <label className="block text-sm font-semibold">Payment amount (USD)<input inputMode="decimal" aria-label="Payment amount in dollars" disabled={busy || !!data && !data.allowPartialPayments} value={amount} onChange={e => editAmount(e.target.value)} className="mt-2 w-full rounded-xl border bg-[#F6F0E6] px-4 py-3 text-right text-2xl font-semibold" placeholder="0.00"/></label>
-          <div className="grid grid-cols-3 gap-2" aria-label="Onscreen number pad">{["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "Backspace"].map(key => <button key={key} aria-label={key === "Backspace" ? "Delete last digit" : key === "." ? "Decimal point" : key} disabled={busy || !!data && !data.allowPartialPayments} onClick={() => press(key)} className="rounded-xl bg-[#1E293B] py-3 text-xl font-semibold text-white hover:bg-[#334155] disabled:opacity-40">{key === "Backspace" ? "⌫" : key}</button>)}</div>
-          <div className="flex gap-2"><button disabled={busy} onClick={() => editAmount((due / 100).toFixed(2))} className="flex-1 rounded-lg bg-[#F6F0E6] py-2 text-sm font-semibold">Exact amount</button><button disabled={busy || !!data && !data.allowPartialPayments} onClick={() => press("Clear")} className="flex-1 rounded-lg bg-[#F6F0E6] py-2 text-sm font-semibold">Clear amount</button></div>
-          {cart.length>20 && <p className="text-sm text-red-700">Select up to 20 bills per checkout.</p>}
-          {amountCents > due && sale && <p className="text-sm text-red-700">Amount exceeds the balance. Enter the amount to apply, excluding cash change.</p>}
-          <button disabled={busy || (!canPay&&!(family&&hasDraft&&draftQuote?.quote.totalCents===0&&!quoteLoading&&!sale))} onClick={preparePayment} className="w-full rounded-xl bg-[#20B8A8] px-4 py-4 text-lg font-semibold text-white shadow-sm disabled:opacity-40">{busy ? "Saving…" : hasDraft&&due===0?"Save zero-total sale":`Pay ${dollars(amountCents)}`}</button>
-          <p className="text-xs text-gray-500">Cash or payment collected on an external terminal. Square charging is not connected yet.</p>
+          <PaymentControls busy={busy} methods={data?.paymentMethods??[{key:"cash",label:"Cash"},{key:"card",label:"Card"}]} method={method} onMethod={value=>{setMethod(value);paymentId.current="";}} amount={amount} onAmount={editAmount} onKey={press} dueCents={due} allowPartial={data?.allowPartialPayments??false} allowSplit={data?.allowSplitPayments??false} onSplit={()=>{editAmount("");setNotice("Split payment: enter the first amount and method, then pay the remaining balance with the next method.");}} canPay={canPay||!!(family&&hasDraft&&draftQuote?.quote.totalCents===0&&!quoteLoading&&!sale)} onPay={()=>preparePayment()} label={hasDraft&&due===0?"Save zero-total sale":undefined}/>
+          {cart.length>20&&<p role="alert" className="text-sm text-red-700">Select up to 20 bills per checkout.</p>}
+          <button type="button" disabled={busy||!canPay} onClick={()=>preparePayment("square")} className="w-full rounded-xl border border-[#20B8A8] px-4 py-3 font-semibold disabled:opacity-40">Pay securely with Square</button>
+          <p className="text-xs text-gray-500">The Pay button records money collected as cash or on an external terminal. Secure Square payment opens separate card fields.</p>
         </div>
       </aside>
     </div>
+    {squareOpen&&family&&sale&&<SquareCardPayment payload={{kind:"counter",familyId:family.id,bills:cart.map(s=>({id:s.id,dueCents:s.totalCents-paidCents(s)})),amountCents}} onClose={()=>{setSquareOpen(false);refresh().catch(e=>setError(e.message));}} onPaid={()=>{setNotice("Square payment completed. View receipts in family history.");onChanged?.();}}/>}
     {manageOpen&&<ProductManager products={products} onClose={()=>setManageOpen(false)} onSaved={loadCatalog}/>}
     {customOpen&&<SigningDialog title="Add Custom Charge" busy={false} onClose={()=>setCustomOpen(false)}><form className="space-y-4" onSubmit={e=>{e.preventDefault();if(!/^\d{1,7}(\.\d{1,2})?$/.test(customAmount)||Number(customAmount)<=0||Number(customAmount)>1000000){setError("Enter a positive custom amount with up to two decimals.");return;}changeDraft({...draft,custom:[...draft.custom,{id:crypto.randomUUID(),name:customName.trim()||"Custom Charge",quantity:1,amountCents:Math.round(Number(customAmount)*100),profile:customProfile}]});setCustomOpen(false);}}><label className="block text-sm font-semibold">Description<input required maxLength={100} value={customName} onChange={e=>setCustomName(e.target.value)} className="mt-2 block w-full rounded-xl border p-3"/></label><label className="block text-sm font-semibold">Tax category<select value={customProfile} onChange={e=>setCustomProfile(e.target.value)} className="mt-2 block w-full rounded-xl border p-3"><option value="services">Services</option><option value="retail">Retail</option><option value="admissions">Admissions</option></select></label><label className="block text-sm font-semibold">Amount (USD)<input required inputMode="decimal" value={customAmount} onChange={e=>{if(/^\d{0,7}(\.\d{0,2})?$/.test(e.target.value))setCustomAmount(e.target.value);}} className="mt-2 block w-full rounded-xl border bg-[#F6F0E6] p-4 text-right text-3xl"/></label><div className="grid grid-cols-5 gap-2">{[5,10,20,50,100].map(n=><button type="button" key={n} onClick={()=>setCustomAmount(String(n))} className="rounded-lg bg-[#F6F0E6] py-3 text-sm font-semibold">${n}</button>)}</div><div className="grid grid-cols-3 gap-2">{["1","2","3","4","5","6","7","8","9",".","0","Backspace"].map(key=><button type="button" key={key} aria-label={key==="Backspace"?"Delete last custom amount digit":key} onClick={()=>setCustomAmount(registerKey(customAmount,key))} className="rounded-xl bg-[#1E293B] py-4 text-xl font-semibold text-white">{key==="Backspace"?"⌫":key}</button>)}</div><button disabled={!customName.trim()||!/^\d+(\.\d{1,2})?$/.test(customAmount)||Number(customAmount)<=0||Number(customAmount)>1000000} className="w-full rounded-xl bg-[#20B8A8] py-4 font-semibold text-white disabled:opacity-40">Add To Cart</button></form></SigningDialog>}
     {familyOpen && <SigningDialog title="Select customer / family" busy={busy} onClose={() => setFamilyOpen(false)}><div className="space-y-4">{error && <p role="alert" className="text-red-700">{error}</p>}<label className="block text-sm font-semibold">Name, email, or last four phone digits<input autoFocus value={query} maxLength={254} onChange={e => { setQuery(e.target.value); setResults([]); setSearching(e.target.value.trim().length >= 2); }} className="mt-2 w-full rounded-xl border p-3"/></label>{searching && <p>Searching…</p>}{!searching && query.trim().length >= 2 && !results.length && <p>No active families found.</p>}{results.map(f => <button key={f.id} disabled={busy} onClick={() => choose(f.id)} className="block w-full rounded-xl border p-4 text-left"><strong>{f.name}</strong>{f.parents.map((p, i) => <span key={i} className="mt-1 block text-sm text-gray-500">{p.firstName} {p.lastName} · {p.phone}</span>)}</button>)}</div></SigningDialog>}

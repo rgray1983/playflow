@@ -101,3 +101,9 @@ Before starting any sprint, ask:
 
 If the answer to any of these is "no", rethink the sprint before
 implementation.
+
+## Shared checkout and Square foundation (2026-10-19)
+
+Implemented shared POS controls, Check-In order sidebar and family checkout popup, party deposit/balance checkout and family extras, staff booking deposit entry, parent deposit entry after rental signing, and central Payment Providers settings. Square Web Payments SDK / OAuth / Payments API / signed webhook handlers are implemented with encrypted credentials, durable retry references and pending-payment recovery. Existing manual collection remains.
+
+Follow `docs/SQUARE-SETUP.md` to configure and authorize a Sandbox seller, then complete connected-account and browser verification. No Square account is connected by this code change. Terminal hardware, automated booking confirmation/email, refunds and manager REVIEW resolution remain later work. Sandbox records must be excluded from live reporting and development bookings resolved before launch.

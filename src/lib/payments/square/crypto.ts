@@ -1,0 +1,6 @@
+import {createCipheriv,createDecipheriv,randomBytes,createHash,timingSafeEqual,createHmac} from "node:crypto";
+export function secretKey(){const value=process.env.PAYMENT_TOKEN_ENCRYPTION_KEY;if(!value||!/^[a-fA-F0-9]{64}$/.test(value))throw new Error("Payment token encryption is not configured.");return Buffer.from(value,"hex");}
+export function encrypt(value:string){const iv=randomBytes(12),cipher=createCipheriv("aes-256-gcm",secretKey(),iv);const data=Buffer.concat([cipher.update(value,"utf8"),cipher.final()]);return [iv,cipher.getAuthTag(),data].map(b=>b.toString("base64url")).join(".");}
+export function decrypt(value:string){const [iv,tag,data]=value.split(".").map(s=>Buffer.from(s,"base64url"));const cipher=createDecipheriv("aes-256-gcm",secretKey(),iv);cipher.setAuthTag(tag);return Buffer.concat([cipher.update(data),cipher.final()]).toString("utf8");}
+export const hash=(value:string)=>createHash("sha256").update(value).digest("hex");
+export function validSignature(key:string,url:string,body:string,signature:string){const expected=Buffer.from(createHmac("sha256",key).update(url+body).digest("base64")),actual=Buffer.from(signature);return expected.length===actual.length&&timingSafeEqual(expected,actual);}

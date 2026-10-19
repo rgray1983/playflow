@@ -80,7 +80,6 @@ async function handlePUT(request: Request) {
         refundRules: commerceSettings.refundRules,
         receiptRules: commerceSettings.receiptRules,
         checkoutRules: commerceSettings.checkoutRules,
-        processorRules: commerceSettings.processorRules,
       },
     });
 

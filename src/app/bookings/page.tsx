@@ -1,5 +1,6 @@
 "use client";
 
+import PartyCheckout from "@/components/counter/PartyCheckout";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
@@ -113,6 +114,7 @@ export default function BookingsPage() {
   const [depositStatus, setDepositStatus] = useState<DepositStatus>("pending");
   const [bookingComplete, setBookingComplete] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savedEventId,setSavedEventId]=useState(""),[checkoutOpen,setCheckoutOpen]=useState(false);
   const requestId = useRef("");
   const [error, setError] = useState("");
   const [availability, setAvailability] = useState<Availability | null>(null);
@@ -253,11 +255,11 @@ export default function BookingsPage() {
       });
 
       const responseText = await response.text();
-      let data: { error?: string; event?: { confirmationUrl?: string } } = {};
+      let data: { error?: string; event?: { id?:string; confirmationUrl?: string } } = {};
 
       if (responseText) {
         try {
-          data = JSON.parse(responseText) as { error?: string; event?: { confirmationUrl?: string } };
+          data = JSON.parse(responseText) as { error?: string; event?: { id?:string; confirmationUrl?: string } };
         } catch {
           data = {
             error: responseText,
@@ -269,6 +271,7 @@ export default function BookingsPage() {
         throw new Error(data.error || "Unable to create booking.");
       }
 
+      setSavedEventId(data.event?.id??"");
       setConfirmationUrl(data.event?.confirmationUrl ?? "");
       setBookingComplete(true);
     } catch (error) {
@@ -283,6 +286,7 @@ export default function BookingsPage() {
   }
 
   function createAnotherBooking() {
+    setSavedEventId("");setCheckoutOpen(false);
     requestId.current = "";
     setAvailability(null); setConfirmationUrl(""); setError("");
     setSelectedAddOnIds([]);
@@ -597,7 +601,8 @@ export default function BookingsPage() {
           <div className="w-full max-w-[560px] rounded-[18px] bg-white p-6 text-center shadow-xl">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#E9F8EC] text-3xl">✓</div>
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-[#1E293B]">Booking Created!</h2>
-            <p className="mt-2 text-sm text-[#6B7280]">Your pending booking and customer record are saved. Share the confirmation link below. No email was sent and no payment was collected.</p>
+            {savedEventId&&<button onClick={()=>setCheckoutOpen(true)} className="mt-4 rounded-xl bg-[#20B8A8] px-5 py-3 font-semibold text-white">Open deposit checkout</button>}
+            <p className="mt-2 text-sm text-[#6B7280]">Your pending booking and customer record are saved. Collect the deposit through checkout, then confirm the booking. No email was sent.</p>
             {confirmationUrl && <a href={confirmationUrl} target="_blank" rel="noreferrer" className="mt-4 block break-all text-sm underline">Open confirmation link</a>}
             <div className="mt-5 grid grid-cols-2 gap-3">
               <Link href="/parties" className="rounded-[10px] bg-[#1E293B] px-4 py-4 text-sm font-semibold text-white">View Booking</Link>
@@ -606,6 +611,7 @@ export default function BookingsPage() {
           </div>
         </div>
       )}
+      {checkoutOpen&&savedEventId&&<PartyCheckout eventId={savedEventId} initialPurpose="DEPOSIT" onClose={()=>setCheckoutOpen(false)} onChanged={()=>{}}/>}
     </main>
   );
 }
