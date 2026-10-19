@@ -16,6 +16,7 @@ const db:any={
  visit:{findFirst:async(query:any)=>{lastQuery=query;return visit;},findMany:async(query:any)=>{lastQuery=query;return[];}},
  membership:{findFirst:async(query:any)=>{lastQuery=query;return membership;},findMany:async(query:any)=>{lastQuery=query;return[];}},
  partyGuest:{findFirst:async(query:any)=>{lastQuery=query;return partyGuest;},updateMany:async({where,data}:any)=>{assert.equal(where.tenantId,"tenant");assert.equal(where.childId,"child");assert.equal(where.status,"EXPECTED");if(partyGuest)Object.assign(partyGuest,data);return{count:partyGuest?1:0};}},
+ counterSale:{findMany:async(query:any)=>{lastQuery=query;return[];},findFirst:async(query:any)=>{lastQuery=query;return query.where.id==="own-receipt"&&query.where.tenantId==="tenant"&&query.where.familyId==="family"?{id:"own-receipt",status:"PAID",payments:[]}:null;}},
  eventPayment:{findMany:async(query:any)=>{lastQuery=query;return[];}},
  party:{findMany:async()=>[]},
  $queryRaw:async()=>[],
@@ -71,7 +72,7 @@ test("saved forms and originals are family scoped, and rental records require th
  assert.equal((await history(request(undefined,"?document=doc"),context)).status,200);assert.equal(lastQuery.where.familyId,"family");assert.equal(lastQuery.where.tenantId,"tenant");assert.equal(lastQuery.select.requestHash,undefined);assert.equal(lastQuery.select.pdfUrl,undefined);
 });
 test("visits, memberships, payments and archived children use scoped, bounded history queries",async()=>{
- for(const section of ["visits","memberships","payments","archived"]){assert.equal((await history(request(undefined,`?section=${section}&page=2`),context)).status,200);assert.equal(lastQuery.where.tenantId,"tenant");assert.equal(lastQuery.skip,20);assert.equal(lastQuery.take,21);assert.equal(lastQuery.select.notes,undefined);if(section==="payments"){assert.equal(lastQuery.where.party.familyId,"family");assert.equal(lastQuery.where.party.primaryParentId,"parent");assert.equal(lastQuery.select.processorPaymentId,undefined);}else assert.equal(lastQuery.where.familyId,"family");}
+ for(const section of ["visits","memberships","payments","archived","counter"]){assert.equal((await history(request(undefined,`?section=${section}&page=2`),context)).status,200);assert.equal(lastQuery.where.tenantId,"tenant");assert.equal(lastQuery.skip,20);assert.equal(lastQuery.take,21);assert.equal(lastQuery.select.notes,undefined);if(section==="payments"){assert.equal(lastQuery.where.party.familyId,"family");assert.equal(lastQuery.where.party.primaryParentId,"parent");assert.equal(lastQuery.select.processorPaymentId,undefined);}else assert.equal(lastQuery.where.familyId,"family");}
  for(const query of ["?section=bad","?page=-1","?page=1.5"]){assert.equal((await history(request(undefined,query),context)).status,400);}
 });
 test("family response includes editable fields and exact waiver-document reference without internal notes",async()=>{
@@ -80,4 +81,9 @@ test("family response includes editable fields and exact waiver-document referen
 test("printable copies preserve stored wording and escape untrusted signature and clause text",()=>{
  const doc:SavedDocument={id:"doc",kind:"LIABILITY",status:"VALID",version:"original-v1",signedAt:"2026-01-01T12:00:00Z",expiresAt:null,signerName:'</p><script>alert(1)</script>',signerEmail:"parent@example.invalid",signature:"Original Signature",photoConsent:false,children:[{childId:"child",childNameSnapshot:"Original Child",dateOfBirthSnapshot:"2020-01-01T00:00Z",status:"REVOKED"}],party:null,waiverText:JSON.stringify({title:"Original waiver",clauses:[["one","Historic title","Unique historic wording <img onerror='bad'>"]],photoConsentText:"Optional historic photo text",signatureConsentText:"Original electronic consent"})};
  const html=printableDocument(doc,"America/New_York");assert.ok(html.includes("Unique historic wording &lt;img"));assert.ok(html.includes("Original electronic consent"));assert.ok(html.includes("Original Child"));assert.ok(html.includes("Original Signature"));assert.ok(!html.includes("<script>"));assert.ok(!html.includes("<img"));assert.ok(html.includes("original-v1"));
+});
+
+test("parent receipt lookup requires the linked family and excludes cashier/internal metadata",async()=>{
+ const own=await history(request(undefined,"?receipt=own-receipt"),context);assert.equal(own.status,200);assert.equal(lastQuery.where.familyId,"family");assert.equal(lastQuery.where.tenantId,"tenant");assert.equal(lastQuery.select.requestHash,undefined);assert.equal(lastQuery.select.staffId,undefined);assert.equal(lastQuery.select.payments.select.notes,undefined);assert.equal(lastQuery.select.payments.select.staffId,undefined);
+ assert.equal((await history(request(undefined,"?receipt=foreign-receipt"),context)).status,404);
 });

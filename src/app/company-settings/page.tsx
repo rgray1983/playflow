@@ -10,6 +10,7 @@ import BusinessProfileSettings from "./components/BusinessProfileSettings";
 import CommerceSettings from "./components/CommerceSettings";
 import EventTypesSettings from "./components/EventTypesSettings";
 import MembershipsSettings from "./components/MembershipsSettings";
+import POSSettings from "./components/POSSettings";
 import ModulesSettings from "./components/ModulesSettings";
 import PackagesSettings from "./components/PackagesSettings";
 import StaffRolesSettings from "./components/StaffRolesSettings";
@@ -28,6 +29,7 @@ const settingsTabs = [
   "Booking Schedule",
   "Add-Ons",
   "Waivers",
+  "POS & Products",
   "Commerce",
   "Staff Roles",
   "Staff Access",
@@ -43,10 +45,10 @@ const navItems = [
   { label: "Company Settings", icon: "⚙", href: "/company-settings" },
 ];
 
-function renderSettingsSection(activeTab: string) {
+function renderSettingsSection(activeTab: string,onSelect:(tab:string)=>void) {
   switch (activeTab) {
     case "Modules":
-      return <ModulesSettings />;
+      return <ModulesSettings onSelect={onSelect}/>;
     case "Business Profile":
       return <BusinessProfileSettings />;
     case "Branding":
@@ -65,6 +67,8 @@ function renderSettingsSection(activeTab: string) {
       return <AddOnsSettings />;
     case "Waivers":
       return <WaiverSettings />;
+    case "POS & Products":
+      return <POSSettings onCommerce={()=>onSelect("Commerce")}/>;
     case "Commerce":
       return <CommerceSettings />;
     case "Staff Roles":
@@ -80,9 +84,9 @@ export default function CompanySettingsPage() {
   const [activeTab, setActiveTab] = useState("Modules");
 
   return (
-    <main className="h-screen overflow-hidden bg-[#E7E3DA] p-5 text-[#202633] antialiased">
+    <main className="h-dvh overflow-hidden bg-[#E7E3DA] p-2 sm:p-5 text-[#202633] antialiased">
       <div className="flex h-full min-h-0 overflow-hidden rounded-[18px] bg-[#F6F0E6] shadow-sm">
-        <aside className="relative h-full min-h-0 w-[260px] shrink-0 overflow-y-auto border-r border-black/10 bg-[#F2EFE8] px-6 py-7 pb-24">
+        <aside className="relative hidden lg:block h-full min-h-0 w-[235px] shrink-0 overflow-y-auto border-r border-black/10 bg-[#F2EFE8] px-6 py-7 pb-24">
           <div className="mb-9">
             <div className="mb-2 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#1E293B] text-sm font-semibold text-white">
@@ -125,7 +129,7 @@ export default function CompanySettingsPage() {
           </div>
         </aside>
 
-        <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden px-6 py-6">
+        <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3 py-4 sm:px-6 sm:py-6">
           <header className="mb-5 flex shrink-0 items-start justify-between gap-5">
             <div>
               <p className="text-sm font-semibold text-[#8A6D3B]">
@@ -137,14 +141,15 @@ export default function CompanySettingsPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              <button className="rounded-[10px] border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#1E293B]">
-                Preview Setup
+              <button onClick={()=>setActiveTab("Modules")} className="rounded-[10px] border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#1E293B]">
+                Review modules
               </button>
             </div>
           </header>
 
-          <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)] gap-3">
-            <aside className="flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
+          <label className="mb-3 block shrink-0 text-sm font-semibold md:hidden">Settings section<select value={activeTab} onChange={e=>setActiveTab(e.target.value)} className="mt-2 block w-full rounded-lg border bg-white p-3">{settingsTabs.map(tab=><option key={tab} value={tab}>{tab}</option>)}</select></label>
+          <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[210px_minmax(0,1fr)] gap-3">
+            <aside className="hidden md:flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-black/10 bg-white shadow-sm">
               <div className="border-b border-black/10 p-4">
                 <p className="text-sm font-semibold text-[#1E293B]">
                   Settings Sections
@@ -183,12 +188,12 @@ export default function CompanySettingsPage() {
                 </div>
 
                 <span className="rounded-full bg-[#F6F0E6] px-3 py-1 text-xs font-semibold text-[#1E293B]">
-                  Configurable
+                  Settings
                 </span>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-32">
-                {renderSettingsSection(activeTab)}
+              <div className="public-scroll min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-5 pb-12">
+                {renderSettingsSection(activeTab,setActiveTab)}
               </div>
             </section>
           </div>

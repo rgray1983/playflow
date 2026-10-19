@@ -21,6 +21,8 @@ learn from real-world use.
 
 # 🟡 High Priority
 
+-   Follow `docs/MODULE-COMPLETION-PLAN.md` for module readiness, settings consolidation and safe business enablement.
+
 -   Add public customer booking flow for a Wix booking-page link.
 -   Inspect Wix CMS exports and implement a repeatable migration with source IDs.
 -   Add blackout dates, separate rooms if needed, and guarded rescheduling.
@@ -67,6 +69,8 @@ Ideas worth remembering but not actively planning.
 ------------------------------------------------------------------------
 
 # Recently Completed
+
+-   Workflow/settings review: honest module readiness, POS product settings, narrow-screen settings navigation, safe membership-plan disabling and stronger validation (`docs/reviews/2026-10-19-workflow-review.md`).
 
 -   Admission bills with configured taxes/fees, recorded payments, printable receipts, real family POS and paid membership/visit-pack activation (Sprint 014; Square charging remains pending).
 -   Real open-play family intake, child waivers, admission/member visit recording and checkout (Sprint 013; payment collection remains separate).

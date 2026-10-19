@@ -1,19 +1,12 @@
 "use client";
-
-import { SettingsSection } from "./SettingsPrimitives";
-
-export default function POSSettings() {
-  return (
-    <SettingsSection
-      title="POS Settings"
-      description="Configure checkout behavior, taxes, receipts, gift cards, and payment methods."
-    >
-      <div className="rounded-[10px] border border-dashed border-black/20 bg-white/70 p-6">
-        <p className="font-semibold text-[#1E293B]">POS settings model comes next</p>
-        <p className="mt-2 text-sm text-[#6B7280]">
-          Current schema does not yet have POSSettings. Add that model before making these settings persistent.
-        </p>
-      </div>
-    </SettingsSection>
-  );
+import Link from "next/link";
+import {useEffect,useState} from "react";
+import ProductManager,{type CounterProduct} from "@/components/counter/ProductManager";
+import {dollars} from "@/lib/counter/receipt";
+import {SettingsSection} from "./SettingsPrimitives";
+export default function POSSettings({onCommerce}:{onCommerce:()=>void}){
+ const [products,setProducts]=useState<CounterProduct[]>([]),[canManage,setCanManage]=useState(false),[open,setOpen]=useState(false),[error,setError]=useState(""),[loading,setLoading]=useState(true);
+ async function load(){const response=await fetch("/api/counter/catalog",{cache:"no-store"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Unable to load products.");setProducts(result.products);setCanManage(result.canManage);setLoading(false);}
+ useEffect(()=>{const controller=new AbortController();fetch("/api/counter/catalog",{cache:"no-store",signal:controller.signal}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error||"Unable to load products.");return result;}).then(result=>{setProducts(result.products);setCanManage(result.canManage);setLoading(false);}).catch(e=>{if(!controller.signal.aborted){setError(e.message);setLoading(false);}});return()=>controller.abort();},[]);
+ return <SettingsSection title="POS & Products" description="Manage the snack and retail catalog used by the register. Payment methods, taxes, fees and receipt wording are managed in Commerce."><div className="space-y-4"><div className="flex flex-wrap gap-3"><Link href="/pos" className="rounded-xl bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white">Open POS register</Link><button onClick={onCommerce} className="rounded-xl border bg-white px-4 py-3 text-sm font-semibold">Payment, tax & receipt settings</button><button disabled={loading||!canManage} onClick={()=>setOpen(true)} className="rounded-xl border bg-white px-4 py-3 text-sm font-semibold disabled:opacity-40">Manage products</button></div>{error&&<p role="alert" className="text-red-700">{error} <button onClick={()=>load().catch(e=>setError(e.message))} className="underline">Retry</button></p>}{loading?<p>Loading product catalog…</p>:<div className="space-y-2">{products.map(p=><div key={p.id} className="flex flex-wrap justify-between gap-2 rounded-lg bg-white p-4 text-sm"><strong>{p.name}</strong><span>{dollars(p.priceCents)} · {p.category==="SNACK"?"Snack":"Retail"} · {p.active?"Available":"Disabled"}</span></div>)}{!products.length&&!error&&<p>No products yet. An owner or manager can add them here.</p>}</div>}<p className="text-sm text-gray-600">Review restored starter prices before real sales. Current checkout records cash and payments collected externally. Square charging, refunds and inventory tracking remain separate work; gift cards are deferred.</p></div>{open&&<ProductManager products={products} onClose={()=>setOpen(false)} onSaved={async()=>{setError("");await load();}}/>}</SettingsSection>;
 }

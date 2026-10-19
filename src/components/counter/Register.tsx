@@ -56,10 +56,10 @@ export default function Register() {
   useEffect(()=>{
     if(!draft.products.length&&!draft.custom.length)return;
     const controller=new AbortController();
-    fetch("/api/counter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"quote-cart",...draft}),signal:controller.signal}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error||"Unable to calculate total.");return result;}).then(result=>{setDraftQuote(result);setQuoteLoading(false);const summary=checkoutSummary(cart);setAmount(((result.quote.totalCents+(summary?summary.totalCents-paidCents(summary):0))/100).toFixed(2));}).catch(e=>{if(!controller.signal.aborted){setError(e.message);setQuoteLoading(false);}});
+    fetch("/api/counter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"quote-cart",...draft}),signal:controller.signal}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error||"Unable to calculate total.");return result;}).then(result=>{replaceEntry.current=true;setDraftQuote(result);setQuoteLoading(false);const summary=checkoutSummary(cart);setAmount(((result.quote.totalCents+(summary?summary.totalCents-paidCents(summary):0))/100).toFixed(2));}).catch(e=>{if(!controller.signal.aborted){setError(e.message);setQuoteLoading(false);}});
     return()=>controller.abort();
   },[draft,cart,products]);
-  function changeDraft(next:typeof draft){setDraft(next);setDraftQuote(null);setQuoteLoading(!!(next.products.length+next.custom.length));draftRequest.current="";paymentId.current="";setError("");if(!next.products.length&&!next.custom.length)setAmount((sale?(sale.totalCents-paidCents(sale))/100:0).toFixed(2));}
+  function changeDraft(next:typeof draft){replaceEntry.current=true;setDraft(next);setDraftQuote(null);setQuoteLoading(!!(next.products.length+next.custom.length));draftRequest.current="";paymentId.current="";setError("");if(!next.products.length&&!next.custom.length)setAmount((sale?(sale.totalCents-paidCents(sale))/100:0).toFixed(2));}
   function productQuantity(id:string,quantity:number){changeDraft({...draft,products:[...draft.products.filter(p=>p.productId!==id),...(quantity>0?[{productId:id,quantity:Math.min(99,quantity)}]:[])]});}
   async function preparePayment(){
     if(!family)return;

@@ -1,40 +1,7 @@
 "use client";
-
-import { SettingsSection } from "./SettingsPrimitives";
-
-const modules = [
-  { key: "admissions", label: "Admissions", enabled: true },
-  { key: "parties", label: "Parties", enabled: true },
-  { key: "calendar", label: "Calendar", enabled: true },
-  { key: "pos", label: "POS", enabled: true },
-  { key: "memberships", label: "Memberships", enabled: false },
-  { key: "retail", label: "Retail", enabled: false },
-  { key: "cafe", label: "Café", enabled: false },
-  { key: "camps", label: "Camps", enabled: false },
-  { key: "classes", label: "Classes", enabled: false },
-  { key: "field_trips", label: "Field Trips", enabled: false },
-  { key: "rentals", label: "Rentals", enabled: false },
-  { key: "reports", label: "Reports", enabled: false },
-];
-
-export default function ModulesSettings() {
-  return (
-    <SettingsSection
-      title="Modules"
-      description="Choose which parts of PlayFlow this business uses. Database persistence comes after the TenantModule schema is added."
-    >
-      <div className="grid grid-cols-3 gap-3">
-        {modules.map((module) => (
-          <div key={module.key} className="rounded-[10px] bg-white p-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-semibold text-[#1E293B]">{module.label}</p>
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${module.enabled ? "bg-[#E9F8EC] text-[#245B35]" : "bg-[#F6F0E6] text-[#6B7280]"}`}>
-                {module.enabled ? "Enabled" : "Off"}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </SettingsSection>
-  );
+import {SettingsSection} from "./SettingsPrimitives";
+import {moduleCatalog} from "@/lib/modules/catalog";
+const readiness={available:{label:"Core workflow available",style:"bg-green-50 text-green-900"},partial:{label:"Partly available",style:"bg-amber-50 text-amber-900"},planned:{label:"Planned",style:"bg-gray-100 text-gray-700"}};
+export default function ModulesSettings({onSelect}:{onSelect:(tab:string)=>void}){
+ return <SettingsSection title="Modules" description="What is working today and what remains to finish each area of PlayFlow."><p className="mb-5 rounded-xl bg-white p-4 text-sm text-gray-600">These badges show build readiness. Business-specific on/off controls are planned; changing which modules your business uses is not enabled here yet. Existing workflows remain available.</p><div className="grid gap-3 xl:grid-cols-2">{moduleCatalog.map(module=><article key={module.key} className="space-y-3 rounded-xl bg-white p-4"><div className="flex flex-wrap items-start justify-between gap-2"><h4 className="font-semibold">{module.name}</h4><span className={`rounded-full px-3 py-1 text-xs font-semibold ${readiness[module.readiness].style}`}>{readiness[module.readiness].label}</span></div><p className="text-sm">{module.scope}</p><p className="text-sm text-gray-600"><strong>To finish:</strong> {module.remaining}</p>{module.settings&&<button onClick={()=>onSelect(module.settings!)} className="text-sm font-semibold underline">Open {module.settings}</button>}</article>)}</div><section className="mt-5 space-y-3 rounded-xl bg-white p-4 text-sm"><h4 className="font-semibold">Recommended completion order</h4><ol className="list-decimal space-y-2 pl-5"><li>Finish and test the current admissions, party, parent and checkout workflows.</li><li>Add daily reporting, email delivery and the Square payment connection.</li><li>Add saved business module preferences with permission checks and consistent navigation.</li><li>Build camps, classes, school groups, dedicated café or general rentals when the business needs them.</li></ol><p className="text-gray-600">Module preferences must preserve saved records and allow staff to finish existing visits, bookings and payments. Gift cards remain deferred.</p></section></SettingsSection>;
 }
