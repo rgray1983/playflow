@@ -58,7 +58,7 @@ export default function ParentBookingWizard({slug,parent,email,familyChildren,on
 
   return <SigningDialog title="Book a party" busy={busy} onClose={onClose}>
     <div className="space-y-5">
-      <h3 ref={heading} tabIndex={-1} className="text-xl font-semibold outline-none">{saved?(saved.status==="PENDING"?(savedExpired?"Hold expired":"Booking saved — awaiting deposit"):`Booking ${saved.status.toLowerCase()}`):["1. Party details","2. Choose a time","3. Review and waiver","4. Rental agreement"][step]}</h3>
+      <h3 ref={heading} tabIndex={-1} className="text-xl font-semibold outline-none">{saved?(saved.status==="PENDING"?(savedExpired?"Hold expired":paymentPaid?"Deposit received — awaiting confirmation":"Booking saved — awaiting deposit"):`Booking ${saved.status.toLowerCase()}`):["1. Party details","2. Choose a time","3. Review and waiver","4. Rental agreement"][step]}</h3>
       {error&&<p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}
       {saved?<section className="space-y-4 rounded-xl border p-5">
         <p className="font-semibold">{saved.title}</p><p>{formatted(saved.startTime)}</p>
