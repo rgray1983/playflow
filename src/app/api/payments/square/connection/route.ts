@@ -12,9 +12,12 @@ async function get(){return NextResponse.json(await publicConnection(getStaffCon
 async function post(request:Request){try{
  const staff=getStaffContext(),body=await request.json(),mode=squareMode(body.mode),where={tenantId_mode:{tenantId:staff.tenantId,mode}};
  if(body.action==="mode"){
-  if(await prisma.providerCheckout.count({where:{tenantId:staff.tenantId,status:{in:["PENDING","REVIEW"]}}}))throw new PaymentError("Resolve pending Square payments before switching environments.",409);
-  const raw=await prisma.commerceSettings.findUnique({where:{tenantId:staff.tenantId}}),settings=normalizeCommerceSettings(raw??{}),processorRules={provider:"square",mode,connected:false,accountLabel:""};
-  await prisma.commerceSettings.upsert({where:{tenantId:staff.tenantId},create:{tenantId:staff.tenantId,...settings,processorRules},update:{processorRules}});return NextResponse.json(await publicConnection(staff.tenantId));
+  await prisma.$transaction(async tx=>{
+   await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id=${staff.tenantId} FOR UPDATE`);
+   if(await tx.providerCheckout.count({where:{tenantId:staff.tenantId,status:{in:["PENDING","REVIEW"]}}}))throw new PaymentError("Resolve pending Square payments before switching environments.",409);
+   const raw=await tx.commerceSettings.findUnique({where:{tenantId:staff.tenantId}}),settings=normalizeCommerceSettings(raw??{}),processorRules={provider:"square",mode,connected:false,accountLabel:""};
+   await tx.commerceSettings.upsert({where:{tenantId:staff.tenantId},create:{tenantId:staff.tenantId,...settings,processorRules},update:{processorRules}});
+  });return NextResponse.json(await publicConnection(staff.tenantId));
  }
  const c=config(mode);
  if(body.action==="connect"){
@@ -30,7 +33,13 @@ async function post(request:Request){try{
   if(body.action==="location"){if(typeof body.locationId!=="string"||!options.some(l=>l.id===body.locationId))throw new PaymentError("Choose an active USD card-processing location.");locationId=body.locationId;}
   if(!locationId&&options.length===1)locationId=options[0].id;
   const location=options.find(l=>l.id===locationId);
-  await prisma.paymentConnection.update({where:{id:connection.id},data:{locationId:location?.id??null,locationLabel:location?.name??null,checkedAt:new Date()}});return NextResponse.json({...await publicConnection(staff.tenantId),locations:options});
+  await prisma.$transaction(async tx=>{
+   await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id=${staff.tenantId} FOR UPDATE`);
+   const current=await tx.paymentConnection.findUniqueOrThrow({where:{id:connection.id}});
+   if(current.merchantId!==connection.merchantId||!current.accessToken)throw new PaymentError("The Square authorization changed. Verify the connection again.",409);
+   if(current.locationId!==(location?.id??null)&&await tx.providerCheckout.count({where:{tenantId:staff.tenantId,mode,status:{in:["PENDING","REVIEW"]}}}))throw new PaymentError("Resolve pending payments before changing the payment location.",409);
+   await tx.paymentConnection.update({where:{id:connection.id},data:{locationId:location?.id??null,locationLabel:location?.name??null,checkedAt:new Date()}});
+  });return NextResponse.json({...await publicConnection(staff.tenantId),locations:options});
  }
  if(body.action==="disconnect"){
   await prisma.$transaction(async tx=>{await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id=${staff.tenantId} FOR UPDATE`);if(await tx.providerCheckout.count({where:{tenantId:staff.tenantId,mode,status:{in:["PENDING","REVIEW"]}}}))throw new PaymentError("Resolve pending payments before disconnecting.",409);
