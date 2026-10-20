@@ -41,3 +41,65 @@ body {
   border: 2px solid white;
   border-radius: 8px;
 }
+
+/* The register owns its available height; long lists never move payment actions. */
+.counter-register {
+  container-type: inline-size;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.counter-register .register-toolbar { flex-shrink: 0; }
+.counter-register .register-banner { max-height: 52px; flex-shrink: 0; overflow-y: auto; }
+.counter-register .register-mobile-tabs { display: flex; flex-shrink: 0; gap: 6px; }
+.counter-register .register-mobile-tabs button { flex: 1; min-height: 40px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+.counter-register .register-panes { display: grid; flex: 1; min-height: 0; min-width: 0; gap: 12px; }
+.counter-register .register-pane { display: none; min-height: 0; min-width: 0; overflow: hidden; flex-direction: column; }
+.counter-register[data-view="products"] .register-catalog,
+.counter-register[data-view="order"] .register-order,
+.counter-register[data-view="payment"] .register-payment { display: flex; }
+.counter-register .register-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.counter-register .register-product-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }
+.counter-register .register-payment { padding: 12px; gap: 8px; }
+.counter-register .register-payment-total { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; min-height: 38px; }
+.counter-register .register-controls { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 8px; }
+.counter-register .register-payment-entry { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain; }
+.counter-register .register-methods { flex-shrink: 0; }
+.counter-register .register-method-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.counter-register .register-method-grid button { min-width: 0; min-height: 44px; padding: 4px; font-size: 12px; overflow-wrap: anywhere; }
+.counter-register .register-method-grid button span { margin-bottom: 0; font-size: 14px; line-height: 16px; }
+.counter-register .register-payment-entry input { height: 44px; margin-top: 0; padding: 6px 12px; }
+.counter-register .register-keypad { display: grid; flex: 1; min-height: 194px; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(44px, 1fr)); gap: 6px; }
+.counter-register .register-keypad button { min-height: 44px; padding: 4px; }
+.counter-register .register-payment-actions { display: flex; flex-shrink: 0; flex-direction: column; gap: 8px; }
+.counter-register .register-payment-actions button { min-height: 44px; padding: 8px 12px; }
+.counter-register .register-mobile-dock { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid #ddd; padding-top: 8px; }
+.counter-register[data-view="payment"] .register-mobile-dock,
+.counter-register[data-view="payment"] .register-toolbar { display: none; }
+
+/* Narrow tablets keep a dedicated payment column beside two scrolling lists. */
+@container (min-width: 720px) {
+  .counter-register .register-mobile-tabs,
+  .counter-register .register-mobile-dock { display: none; }
+  .counter-register[data-view] .register-toolbar { display: flex; }
+  .counter-register .register-panes { grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "catalog payment" "order payment"; }
+  .counter-register .register-pane { display: flex; }
+  .counter-register .register-catalog { grid-area: catalog; }
+  .counter-register .register-order { grid-area: order; }
+  .counter-register .register-payment { grid-area: payment; }
+}
+
+/* Wide registers give products, the order and payment their own columns. */
+@container (min-width: 940px) {
+  .counter-register .register-panes { grid-template-columns: minmax(240px, 1.1fr) minmax(240px, 1fr) 320px; grid-template-rows: minmax(0, 1fr); grid-template-areas: "catalog order payment"; }
+}
+
+@media (max-width: 767px) {
+  .pos-workspace:has(.counter-register[data-view="payment"]) > header,
+  .pos-workspace:has(.counter-register[data-view="payment"]) > nav { display: none; }
+}

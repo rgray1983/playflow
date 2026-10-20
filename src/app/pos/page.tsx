@@ -14,9 +14,9 @@ export default function POSPage() {
         <nav className="space-y-1">{navigation.map(([label, icon, href]) => <Link key={href} href={href} className={`flex items-center gap-4 rounded-lg px-4 py-3 text-sm font-semibold ${href === "/pos" ? "bg-white shadow-sm" : "text-gray-500 hover:bg-white/70"}`}><span aria-hidden="true">{icon}</span>{label}</Link>)}</nav>
         <div className="mt-auto pt-6"><SignOutButton/></div>
       </aside>
-      <section className="public-scroll min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
-        <header className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-semibold text-[#8A6D3B]">Point of Sale</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">POS</h1></div><div className="text-sm font-semibold"><StaffName/></div></header>
-        <nav className="mb-5 flex flex-wrap gap-4 text-sm underline lg:hidden">{navigation.map(([label, , href]) => <Link key={href} href={href}>{label}</Link>)}</nav>
+      <section className="pos-workspace flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3 sm:p-4">
+        <header className="mb-3 flex shrink-0 flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold text-[#8A6D3B]">Point of Sale</p><h1 className="text-2xl font-semibold tracking-tight">POS</h1></div><div className="text-sm font-semibold"><StaffName/></div></header>
+        <nav className="mb-3 flex shrink-0 gap-4 overflow-x-auto whitespace-nowrap pb-2 text-sm underline lg:hidden">{navigation.map(([label, , href]) => <Link key={href} href={href}>{label}</Link>)}</nav>
         <Register/>
       </section>
     </div>
