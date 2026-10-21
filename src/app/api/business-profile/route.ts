@@ -2,18 +2,7 @@ import { withStaff, getStaffTenant } from "@/lib/auth/staff";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-type BusinessProfilePayload = {
-  name?: string;
-  phone?: string | null;
-  email?: string | null;
-  website?: string | null;
-  address1?: string | null;
-  address2?: string | null;
-  city?: string | null;
-  state?: string | null;
-  zip?: string | null;
-  timezone?: string | null;
-};
+import {businessProfileFields,WorkspaceError} from "@/lib/workspaces/rules";
 
 async function getTenant() { return getStaffTenant(); }
 
@@ -48,28 +37,9 @@ async function handlePUT(request: Request) {
     return NextResponse.json({ error: "No tenant found." }, { status: 400 });
   }
 
-  const body = (await request.json()) as BusinessProfilePayload;
-  const name = body.name?.trim();
-
-  if (!name) {
-    return NextResponse.json({ error: "Business name is required." }, { status: 400 });
-  }
-
-  const updatedTenant = await prisma.tenant.update({
-    where: { id: tenant.id },
-    data: {
-      name,
-      phone: body.phone?.trim() || null,
-      email: body.email?.trim() || null,
-      website: body.website?.trim() || null,
-      address1: body.address1?.trim() || null,
-      address2: body.address2?.trim() || null,
-      city: body.city?.trim() || null,
-      state: body.state?.trim() || null,
-      zip: body.zip?.trim() || null,
-      timezone: body.timezone?.trim() || "America/New_York",
-    },
-  });
+  let fields;
+  try{fields=businessProfileFields(await request.json());}catch(error){return NextResponse.json({error:error instanceof WorkspaceError?error.message:"Enter valid business details."},{status:400});}
+  const updatedTenant=await prisma.tenant.update({where:{id:tenant.id},data:fields});
 
   return NextResponse.json({ businessProfile: serializeTenant(updatedTenant) });
 }

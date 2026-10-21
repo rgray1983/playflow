@@ -1,4 +1,5 @@
 "use client";
+import {BusinessName} from "@/components/StaffIdentity";
 
 import Link from "next/link";
 import StaffName from "@/components/StaffName";
@@ -10,7 +11,7 @@ export default function POSPage() {
   return <main className="h-dvh overflow-hidden bg-[#E7E3DA] p-2 text-[#202633] antialiased sm:p-5">
     <div className="flex h-full overflow-hidden rounded-[18px] bg-[#F6F0E6] shadow-sm">
       <aside className="hidden w-[235px] shrink-0 flex-col border-r border-black/10 bg-[#F2EFE8] px-5 py-7 lg:flex">
-        <Link href="/" className="mb-9 flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1E293B] text-sm font-semibold text-white">PF</span><span><strong className="block text-lg">PlayFlow</strong><span className="text-xs text-gray-500">Palmetto Playhouse</span></span></Link>
+        <Link href="/" className="mb-9 flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1E293B] text-sm font-semibold text-white">PF</span><span><strong className="block text-lg">PlayFlow</strong><span className="text-xs text-gray-500"><BusinessName/></span></span></Link>
         <nav className="space-y-1">{navigation.map(([label, icon, href]) => <Link key={href} href={href} className={`flex items-center gap-4 rounded-lg px-4 py-3 text-sm font-semibold ${href === "/pos" ? "bg-white shadow-sm" : "text-gray-500 hover:bg-white/70"}`}><span aria-hidden="true">{icon}</span>{label}</Link>)}</nav>
         <div className="mt-auto pt-6"><SignOutButton/></div>
       </aside>

@@ -6,6 +6,6 @@ export default async function AuthPage({ params, searchParams }: { params: Promi
   const { mode } = await params;
   if (!modes.includes(mode)) notFound();
   const query = await searchParams;
-  const nextPath = typeof query.next === "string" && /^\/parent\/[a-z0-9-]+$/.test(query.next) ? query.next : "/";
+  const nextPath = typeof query.next === "string" && (/^(\/parent\/[a-z0-9-]+)$/.test(query.next)||query.next==="/start") ? query.next : "/";
   return <AuthPanel key={mode} mode={mode as AuthMode} nextPath={nextPath} />;
 }

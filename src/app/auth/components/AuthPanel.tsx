@@ -7,13 +7,13 @@ import SignOutButton from "@/components/SignOutButton";
 export type AuthMode = "sign-in" | "sign-up" | "verify" | "access" | "setup" | "recover" | "unavailable";
 const headings: Record<AuthMode, string> = {
   "sign-in": "Welcome back", "sign-up": "Create your account", verify: "Verify your email",
-  access: "Staff access needed", setup: "Set up your business", recover: "Reset your password", unavailable: "Unable to connect",
+  access: "Staff access needed", setup: "Claim an existing business", recover: "Reset your password", unavailable: "Unable to connect",
 };
 const inputClass = "mt-2 w-full rounded-[10px] border border-black/15 bg-white px-4 py-3 text-sm outline-none focus:border-[#20B8A8] focus:ring-2 focus:ring-[#20B8A8]/20";
 
 export default function AuthPanel({ mode, nextPath = "/" }: { mode: AuthMode; nextPath?: string }) {
   const parentFlow = nextPath.startsWith("/parent/");
-  const authLink = (mode: string) => `/auth/${mode}${parentFlow ? `?next=${encodeURIComponent(nextPath)}` : ""}`;
+  const authLink = (mode: string) => `/auth/${mode}${parentFlow || nextPath === "/start" ? `?next=${encodeURIComponent(nextPath)}` : ""}`;
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -73,7 +73,7 @@ export default function AuthPanel({ mode, nextPath = "/" }: { mode: AuthMode; ne
     <section className="w-full max-w-md rounded-[20px] border border-black/10 bg-[#F6F0E6] p-7 shadow-sm">
       <div className="mb-7 flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1E293B] font-semibold text-white">PF</div><div><p className="text-lg font-semibold">PlayFlow</p><p className="text-xs text-[#6B7280]">Your venue, running smoothly.</p></div></div>
       <h1 className="text-2xl font-semibold tracking-tight">{headings[mode]}</h1>
-      <p className="mb-6 mt-2 text-sm leading-6 text-[#6B7280]">{mode === "access" ? "Your business owner needs to approve your email for staff access. If you are setting up the business for the first time, use your owner setup code." : mode === "setup" ? "Sign in and verify your email first, then enter the one-time owner setup code." : mode === "verify" ? "Enter your account email and request a code to confirm it belongs to you." : mode === "sign-up" ? parentFlow ? "Create a parent account, then verify your email to manage your family." : "Creating an account does not grant access to a business. Your owner must approve staff access." : mode === "unavailable" ? "We could not reach the sign-in service. Please try again shortly." : parentFlow ? "Sign in to manage your family, children, and forms." : "Sign in with the email approved by your business owner."}</p>
+      <p className="mb-6 mt-2 text-sm leading-6 text-[#6B7280]">{mode === "access" ? "Joining an existing business? Its owner must approve your email. Starting your own business? Create a separate workspace below." : mode === "setup" ? "This is only for claiming an existing business using a setup code supplied by PlayFlow. New business owners can create a workspace without a code." : mode === "verify" ? "Enter your account email and request a code to confirm it belongs to you." : mode === "sign-up" ? parentFlow ? "Create a parent account, then verify your email to manage your family." : "Verify your email, then create your own business workspace or join a business that approved your staff access." : mode === "unavailable" ? "We could not reach the sign-in service. Please try again shortly." : parentFlow ? "Sign in to manage your family, children, and forms." : "Sign in to your business workspace. Staff use the email approved by their business owner."}</p>
       {error && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       {message && <p role="status" className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
       {hasForm && <form onSubmit={submit} className="space-y-4">
@@ -87,7 +87,8 @@ export default function AuthPanel({ mode, nextPath = "/" }: { mode: AuthMode; ne
       <div className="mt-5 flex flex-wrap gap-x-4 gap-y-3 text-sm font-medium text-[#155E75]">
         {mode !== "sign-in" && <Link href={authLink("sign-in")}>Sign in</Link>}
         {mode === "sign-in" && <><Link href={authLink("sign-up")}>Create account</Link><Link href={authLink("recover")}>Forgot password?</Link></>}
-        {mode === "access" && <><Link href="/auth/setup">First-time owner setup</Link><button onClick={() => window.location.assign("/")}>Check access again</button></>}
+        {mode === "access" && <><Link href="/start">Create a business workspace</Link><button onClick={() => window.location.assign("/")}>Check access again</button></>}
+        {mode === "setup" && <Link href="/start">Create a new business instead</Link>}
         {mode === "unavailable" && <button onClick={() => window.location.assign("/")}>Try again</button>}
       </div>
       {["verify", "access", "setup"].includes(mode) && <div className="mt-5 border-t border-black/10 pt-3"><SignOutButton /></div>}

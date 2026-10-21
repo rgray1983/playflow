@@ -1,4 +1,5 @@
 "use client";
+import {BusinessName} from "@/components/StaffIdentity";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -133,7 +134,7 @@ export default function PartiesPage() {
     <main className="h-screen overflow-hidden bg-[#E7E3DA] p-5 text-[#202633] antialiased">
       <div className="flex h-full overflow-hidden rounded-[18px] bg-[#F6F0E6] shadow-sm">
         <aside className="relative h-full w-[260px] shrink-0 border-r border-black/10 bg-[#F2EFE8] px-6 py-7">
-          <div className="mb-9 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#1E293B] text-sm font-semibold text-white">PF</div><div><h1 className="text-lg font-semibold tracking-[-0.03em]">PlayFlow</h1><p className="text-xs text-[#6B7280]">Palmetto Playhouse</p></div></div>
+          <div className="mb-9 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#1E293B] text-sm font-semibold text-white">PF</div><div><h1 className="text-lg font-semibold tracking-[-0.03em]">PlayFlow</h1><p className="text-xs text-[#6B7280]"><BusinessName/></p></div></div>
           <nav className="space-y-1">{navItems.map((item) => <Link key={item.label} href={item.href} className={`flex w-full items-center gap-4 rounded-[8px] px-4 py-3 text-left text-sm font-semibold transition ${item.href === "/parties" ? "bg-white text-[#111827] shadow-sm" : "text-[#5B6270] hover:bg-white/70 hover:text-[#111827]"}`}><span className="flex h-5 w-5 items-center justify-center text-base">{item.icon}</span><span>{item.label}</span></Link>)}</nav>
         </aside>
 

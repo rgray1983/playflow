@@ -1,4 +1,5 @@
 "use client";
+import {BusinessName} from "@/components/StaffIdentity";
 
 import PartyCheckout from "@/components/counter/PartyCheckout";
 import Link from "next/link";
@@ -312,7 +313,7 @@ export default function BookingsPage() {
               <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#1E293B] text-sm font-semibold text-white">PF</div>
               <div>
                 <h1 className="text-lg font-semibold tracking-[-0.03em]">PlayFlow</h1>
-                <p className="text-xs text-[#6B7280]">Palmetto Playhouse</p>
+                <p className="text-xs text-[#6B7280]"><BusinessName/></p>
               </div>
             </div>
           </div>

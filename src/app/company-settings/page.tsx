@@ -1,4 +1,5 @@
 "use client";
+import {BusinessName} from "@/components/StaffIdentity";
 
 import Link from "next/link";
 import SignOutButton from "@/components/SignOutButton";
@@ -12,6 +13,7 @@ import CommerceSettings from "./components/CommerceSettings";
 import EventTypesSettings from "./components/EventTypesSettings";
 import MembershipsSettings from "./components/MembershipsSettings";
 import POSSettings from "./components/POSSettings";
+import GettingStarted from "@/components/workspaces/GettingStarted";
 import ModulesSettings from "./components/ModulesSettings";
 import PackagesSettings from "./components/PackagesSettings";
 import StaffRolesSettings from "./components/StaffRolesSettings";
@@ -20,6 +22,7 @@ import StaffAccessSettings from "./components/StaffAccessSettings";
 import WaiverSettings from "./components/WaiverSettings";
 
 const settingsTabs = [
+  "Getting Started",
   "Modules",
   "Business Profile",
   "Branding",
@@ -49,6 +52,8 @@ const navItems = [
 
 function renderSettingsSection(activeTab: string,onSelect:(tab:string)=>void) {
   switch (activeTab) {
+    case "Getting Started":
+      return <GettingStarted onSelect={onSelect}/>;
     case "Modules":
       return <ModulesSettings onSelect={onSelect}/>;
     case "Business Profile":
@@ -102,7 +107,7 @@ export default function CompanySettingsPage() {
                 <h1 className="text-lg font-semibold tracking-[-0.03em]">
                   PlayFlow
                 </h1>
-                <p className="text-xs text-[#6B7280]">Palmetto Playhouse</p>
+                <p className="text-xs text-[#6B7280]"><BusinessName/></p>
               </div>
             </div>
           </div>

@@ -1,12 +1,14 @@
 # PlayFlow Architecture & Development Standards
 
-Last updated: 2026-07-05
+Last updated: 2026-10-21
 
 ## Product Vision
 
 PlayFlow is a configurable SaaS operations platform for indoor play centers, party/event venues, family activity businesses, and similar businesses.
 
 The product must be flexible enough that each business can make it feel like their own system without requiring custom code.
+
+See `docs/reviews/2026-10-21-saas-foundation.md` for current implementation status, the owner onboarding flow and subscription launch blockers. Palmetto Playhouse is the first customer workspace; its branding, data, terms and Square authorization are not platform defaults.
 
 ## Core Principles
 

@@ -12,6 +12,11 @@ learn from real-world use.
 
 # 🔥 Highest Priority
 
+-   Follow the SaaS foundation review in `docs/reviews/2026-10-21-saas-foundation.md`: PlayFlow is the product; Palmetto Playhouse is its first customer.
+-   Complete tenant-owned published legal forms and a second-business owner/parent/staff acceptance run.
+-   Implement platform subscription billing, trusted billing webhooks and entitlements separately from venue memberships/customer payments. Plan prices, trial terms and past-due policy are pending owner decisions.
+-   Finish iPad Square POS / Reader handoff and payment reconciliation.
+
 -   Complete owner onboarding: real email verification/recovery and visual review.
 -   Add payment refunds/reversals and credit accounting before allowing overpayments.
 -   Connect Square sandbox/live deposit checkout and signed webhooks to the parent booking hold flow; gate confirmation and invitation release on payment.
@@ -107,3 +112,9 @@ implementation.
 Implemented shared POS controls, Check-In order sidebar and family checkout popup, party deposit/balance checkout and family extras, staff booking deposit entry, parent deposit entry after rental signing, and central Payment Providers settings. Square Web Payments SDK / OAuth / Payments API / signed webhook handlers are implemented with encrypted credentials, durable retry references and pending-payment recovery. Existing manual collection remains.
 
 Follow `docs/SQUARE-SETUP.md` to configure and authorize a Sandbox seller, then complete connected-account and browser verification. No Square account is connected by this code change. Terminal hardware, automated booking confirmation/email, refunds and manager REVIEW resolution remain later work. Sandbox records must be excluded from live reporting and development bookings resolved before launch.
+
+## SaaS onboarding foundation (2026-10-21)
+
+Implemented verified-owner self-service workspace creation at `/start`, an atomic empty business/owner/commerce setup, Company Settings → Getting Started, tenant-specific shell names and live business-scoped dashboard counts. Customer payment settings no longer ask businesses to configure developer secrets. Existing workspace claim and staff approval remain protected.
+
+PlayFlow subscription billing is explicitly unavailable; creating a workspace does not create a paid subscription. Other businesses remain blocked from using Palmetto-specific legal forms. See the review above for release blockers and the implementation sequence.
