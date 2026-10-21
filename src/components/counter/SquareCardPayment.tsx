@@ -1,10 +1,11 @@
 "use client";
 import {useEffect,useId,useRef,useState} from "react";
 import SigningDialog from "@/components/forms/SigningDialog";
+import {cardVerificationDetails,cardTokenError,type CardTokenResult} from "@/lib/payments/square/card-verification";
 import {dollars} from "@/lib/counter/receipt";
 import type {CheckoutPayload} from "@/lib/payments/square/checkout";
 type Config={mode:"sandbox"|"live";ready:boolean;applicationId:string;locationId:string|null};
-type Card={attach:(selector:string)=>Promise<void>;destroy:()=>Promise<void>;tokenize:(details:object)=>Promise<{status:string;token?:string}>};
+type Card={attach:(selector:string)=>Promise<void>;destroy:()=>Promise<void>;tokenize:(details:object)=>Promise<CardTokenResult>};
 type SquareWindow=Window&{Square?:{payments:(appId:string,locationId:string)=>{card:()=>Promise<Card>}}};
 type Result={id:string;status:string;mode:string;receiptUrl:string|null;error?:string};
 export default function SquareCardPayment({payload,slug,onClose,onPaid}:{payload:CheckoutPayload;slug?:string;onClose:()=>void;onPaid:()=>void}){
@@ -27,7 +28,7 @@ export default function SquareCardPayment({payload,slug,onClose,onPaid}:{payload
  async function pay(){if(inFlight.current)return;inFlight.current=true;setBusy(true);setError("");try{
   let body:object;
   if(result?.id)body={action:"status",id:result.id};else{
-   if(!request.current){const token=await card.current?.tokenize({amount:(payload.amountCents/100).toFixed(2),currencyCode:"USD",intent:"CHARGE",customerInitiated:true,sellerKeyedIn:!slug});if(token?.status!=="OK"||!token.token)throw new Error("Check your card details and try again.");request.current={requestId:crypto.randomUUID(),sourceToken:token.token};setAttempted(true);}
+   if(!request.current){const token=await card.current?.tokenize(cardVerificationDetails(payload.amountCents,!slug));if(token?.status!=="OK"||!token.token)throw new Error(cardTokenError(token));request.current={requestId:crypto.randomUUID(),sourceToken:token.token};setAttempted(true);}
    body={...payload,...request.current,mode:config?.mode,locationId:config?.locationId};
   }
   const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}),d=await r.json();if(!r.ok)throw new Error(d.error||"Payment status is uncertain. Retry to check the same payment.");setResult(d);if(d.status==="PAID")onPaid();if(d.status==="FAILED")request.current=null;
