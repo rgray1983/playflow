@@ -17,6 +17,7 @@ const db:any={
  partyAddOn:{findMany:async({where}:any)=>where.id?.in?.includes("addon")?[{id:"addon",name:"Extra",price:25,durationMinutes:0}]:[]},
  commerceSettings:{findUnique:async()=>({depositRules:{enabled:true,requiredByDefault:true}})},
  party:{
+  findUniqueOrThrow:async({where}:any)=>parties.find(p=>p.id===where.id&&p.tenantId===where.tenantId),
   findFirst:async({where}:any)=>where.bookingRequestId?parties.find(p=>p.bookingRequestId===where.bookingRequestId):parties.find(p=>p.id===where.id&&p.tenantId===where.tenantId&&p.primaryParentId===where.primaryParentId&&p.familyId===where.familyId),
   findMany:async()=>parties,
   count:async()=>parties.filter(p=>p.status==="PENDING"&&p.primaryParentId==="parent"&&p.confirmationExpiresAt>new Date()).length,
@@ -31,6 +32,7 @@ const db:any={
 };
 let queue=Promise.resolve();
 db.$transaction=async(callback:any)=>{const previous=queue;let release!:()=>void;queue=new Promise<void>(r=>release=r);await previous;const snapshot=[parties,documents,guests,addOnItems,timelines].map(rows=>rows.slice());try{return await callback(db);}catch(error){[parties,documents,guests,addOnItems,timelines]=snapshot;throw error;}finally{release();}};
+mock.module("../src/lib/communications/service.ts",{namedExports:{preparePartyMessages:async()=>{}}});
 mock.module("../src/lib/prisma.ts",{namedExports:{prisma:db}});
 mock.module("../src/lib/auth/server.ts",{namedExports:{getAuth:()=>({getSession:async()=>({data:identity?{user:identity}:null,error:null})})}});
 const {GET,POST}=await import("../src/app/api/parent/[slug]/bookings/route");
@@ -48,7 +50,7 @@ test("parent booking APIs require a verified, linked family and reject cross-sit
 test("booking uses saved family and server quote, attaches rental and child coverage, and stays unpaid",async()=>{
  const input=await body({familyId:"foreign-family",parentId:"foreign-parent",depositStatus:"PAID",total:1});
  const response=await POST(request(input),ctx);assert.equal(response.status,200);const result=(await response.json()).booking;
- assert.equal(result.status,"PENDING");assert.equal(result.checkoutAvailable,false);assert.equal(result.balanceDue,325);
+ assert.equal(result.status,"PENDING");assert.equal(result.checkoutAvailable,undefined);assert.equal(result.balanceDue,325);
  const p=parties[0];assert.equal(p.familyId,"family");assert.equal(p.primaryParentId,"parent");assert.equal(p.workflowStep,"AWAITING_DEPOSIT");assert.equal(p.depositStatus,"PENDING");assert.equal(Number(p.depositAmount),100);assert.equal(p.confirmedAt,undefined);assert.equal(p.inviteToken,undefined);assert.equal(p.confirmationToken,undefined);
  assert.equal(p.setupStartsAt.toISOString(),"2030-01-12T16:30:00.000Z");assert.ok(p.confirmationExpiresAt>Date.now());
  assert.equal(documents.length,1);assert.equal(documents[0].partyId,p.id);assert.equal(documents[0].kind,"RENTAL");const snapshot=JSON.parse(documents[0].waiverText).event;assert.equal(snapshot.total,325);assert.equal(snapshot.childId,"child");

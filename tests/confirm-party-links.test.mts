@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import {beforeEach,mock,test} from "node:test";
-let party:any,linksIssued=0,overlap=false;
+let party:any,linksIssued=0,overlap=false,agreement=true;
 const staff={id:"staff",tenantId:"tenant",authUserId:"user",firstName:"Test",lastName:"Owner",status:"ACTIVE",accessRole:"OWNER",accessApproved:true,staffRole:null};
-const db:any={employee:{findUnique:async()=>staff},tenant:{findUniqueOrThrow:async()=>({bookingSettings:{}})},party:{
+const db:any={waiver:{findFirst:async()=>agreement?{id:"signed-agreement"}:null},employee:{findUnique:async()=>staff},tenant:{findUniqueOrThrow:async()=>({bookingSettings:{}})},party:{
  findUnique:async({where}:any)=>(where.id===party.id&&(!where.tenantId||where.tenantId==="tenant"))||where.confirmationToken==="confirmation-token"?party:null,
  findUniqueOrThrow:async()=>party,findFirst:async()=>overlap?{id:"other-party"}:null,
  update:async({data}:any)=>{linksIssued++;Object.assign(party,data);return party;},
@@ -10,13 +10,14 @@ const db:any={employee:{findUnique:async()=>staff},tenant:{findUniqueOrThrow:asy
  $executeRawUnsafe:async()=>{party.status="CONFIRMED";party.confirmedAt=new Date();},
  $transaction:async(callback:any)=>callback(db),
 };
+mock.module("../src/lib/communications/service.ts",{namedExports:{preparePartyMessages:async()=>{}}});
 mock.module("../src/lib/prisma.ts",{namedExports:{prisma:db}});
 mock.module("../src/lib/auth/server.ts",{namedExports:{getAuth:()=>({getSession:async()=>({data:{user:{id:"user",email:"test@example.invalid",emailVerified:true}},error:null})})}});
 const {POST:confirm}=await import("../src/app/api/events/[eventId]/confirm/route");
 const {POST:confirmByLink}=await import("../src/app/api/confirm-party/[token]/route");
 const {POST:repair}=await import("../src/app/api/events/[eventId]/links/route");
 const request=()=>new Request("http://localhost/api/test",{method:"POST"});
-beforeEach(()=>{overlap=false;linksIssued=0;party={id:"party",tenantId:"tenant",status:"PENDING",title:"Test",startTime:new Date("2030-01-01T17:00Z"),endTime:new Date("2030-01-01T19:00Z"),confirmationExpiresAt:new Date("2030-01-01"),confirmedAt:null,hostToken:null,inviteToken:null,inviteUrl:null};});
+beforeEach(()=>{agreement=true;overlap=false;linksIssued=0;party={id:"party",tenantId:"tenant",depositStatus:"WAIVED",depositAmount:100,status:"PENDING",title:"Test",startTime:new Date("2030-01-01T17:00Z"),endTime:new Date("2030-01-01T19:00Z"),confirmationExpiresAt:new Date("2030-01-01"),confirmedAt:null,hostToken:null,inviteToken:null,inviteUrl:null};});
 test("staff confirmation creates links and confirming an already-confirmed party repairs without rotating them",async()=>{
  const ctx={params:Promise.resolve({eventId:"party"})};assert.equal((await confirm(request(),ctx)).status,200);assert.equal(party.status,"CONFIRMED");assert.ok(party.hostToken);assert.ok(party.inviteToken);assert.notEqual(party.hostToken,party.inviteToken);
  const tokens=[party.hostToken,party.inviteToken];assert.equal((await confirm(request(),ctx)).status,200);assert.deepEqual([party.hostToken,party.inviteToken],tokens);assert.equal(linksIssued,1);
@@ -37,4 +38,10 @@ test("expired or cancelled holds cannot confirm or issue private/shareable links
 });
 test("overlapping bookings cannot be confirmed through staff or public confirmation links",async()=>{
  overlap=true;assert.equal((await confirm(request(),{params:Promise.resolve({eventId:"party"})})).status,409);assert.equal((await confirmByLink(request(),{params:Promise.resolve({token:"confirmation-token"})})).status,409);assert.equal(linksIssued,0);assert.equal(party.status,"PENDING");
+});
+
+test("unpaid or unsigned bookings cannot confirm or release links from staff or public confirmation",async()=>{
+ const ctx={params:Promise.resolve({eventId:"party"})},pub={params:Promise.resolve({token:"confirmation-token"})};
+ party.depositStatus="PENDING";assert.equal((await confirm(request(),ctx)).status,409);assert.equal((await confirmByLink(request(),pub)).status,409);assert.equal(linksIssued,0);
+ party.depositStatus="CARD_COLLECTED";agreement=false;assert.equal((await confirm(request(),ctx)).status,409);assert.equal((await confirmByLink(request(),pub)).status,409);assert.equal(linksIssued,0);
 });

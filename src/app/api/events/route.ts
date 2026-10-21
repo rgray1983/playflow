@@ -1,3 +1,5 @@
+import {preparePartyMessages} from "@/lib/communications/service";
+import {assertModule} from "@/lib/operations/guards";
 import { withStaff, getStaffTenant } from "@/lib/auth/staff";
 import { bookingOptions, saveCustomer } from "@/lib/booking/service";
 import { BookingError, normalizePhone } from "@/lib/booking/rules";
@@ -292,6 +294,7 @@ async function handlePOST(request: Request) {
         if ((existing.pricingSnapshot as { requestFingerprint?: string } | null)?.requestFingerprint !== requestFingerprint) throw new BookingError("This booking was already saved. Start a new booking before changing the details.", 409);
         return existing;
       }
+      await assertModule(tx,tenant.id,"parties");
       const currentTenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenant.id } });
       const options = await bookingOptions(tx, currentTenant, { eventTypeId: body.eventTypeId!, packageId: body.packageId!, addOnIds: (body.addOns ?? []).map(a => a.id), eventDate: body.eventDate ?? "", waived: body.depositStatus === "waived" });
       const slot = options.slots.find(s => s.time === body.startTime);
@@ -352,6 +355,7 @@ async function handlePOST(request: Request) {
         ],
       });
 
+      await preparePartyMessages(tx,tenant.id,party.id);
       return tx.party.findUniqueOrThrow({
         where: { id: party.id },
         include: {

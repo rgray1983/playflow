@@ -14,6 +14,7 @@ const tx = {
     findUnique: async ({where}: {where: {id: string; tenantId: string}}) => where.tenantId === "tenant" && where.id === "party" ? {...party} : null,
     update: async ({data}: {data: Record<string,unknown>}) => { Object.assign(party,data); return party; },
   },
+  waiver:{findFirst:async()=>({id:"signed-rental-agreement"})},
   commerceSettings: {findUnique:async()=>settings},
   eventPayment: {
     findFirst:async({where}:{where:Record<string,unknown>})=>payments.find(p=>p.requestId===where.requestId),
@@ -52,4 +53,13 @@ test("Square preflight uses party rules without changing balances or recording m
  const {recordPartyPayment}=await import("../src/lib/payments/party");
  await recordPartyPayment(tx as any,{tenantId:"tenant",employeeId:"staff",name:"Test Cashier"},"party",payload(),{validateOnly:true});
  assert.equal(payments.length,0);assert.equal(timeline.length,0);assert.equal(Number(party.balanceDue),300);assert.equal(party.depositStatus,"PENDING");
+});
+
+test("online deposit preflight requires the signed rental agreement before any charge",async()=>{
+ const {recordPartyPayment}=await import("../src/lib/payments/party");
+ const guarded={...tx,waiver:{findFirst:async()=>null}} as any;
+ await assert.rejects(recordPartyPayment(guarded,{tenantId:"tenant",employeeId:"staff",name:"Cashier"},"party",payload(),{validateOnly:true}),/sign the rental agreement/);
+ assert.equal(payments.length,0);assert.equal(Number(party.balanceDue),300);
+ guarded.waiver.findFirst=async()=>({id:"agreement"});
+ await recordPartyPayment(guarded,{tenantId:"tenant",employeeId:"staff",name:"Cashier"},"party",payload(),{validateOnly:true});assert.equal(payments.length,0);
 });

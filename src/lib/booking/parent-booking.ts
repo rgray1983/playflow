@@ -1,3 +1,7 @@
+import {preparePartyMessages} from "@/lib/communications/service";
+import {confirmReadyBooking} from "./confirmation";
+import {assertModule} from "@/lib/operations/guards";
+import {tenantForms} from "@/lib/operations/settings";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { bookingOptions } from "./service";
@@ -12,7 +16,7 @@ export function parentBookingResult(party: {
   id:string; eventNumber:string|null; title:string; status:string; startTime:Date; endTime:Date;
   confirmationExpiresAt:Date|null; depositAmount:unknown; depositStatus:string; balanceDue:unknown;
 }) {
-  return {id:party.id,eventNumber:party.eventNumber,title:party.title,status:party.status,startTime:party.startTime,endTime:party.endTime,expiresAt:party.confirmationExpiresAt,depositDue:party.depositStatus==="PENDING"?Number(party.depositAmount):0,balanceDue:Number(party.balanceDue),checkoutAvailable:false};
+  return {id:party.id,eventNumber:party.eventNumber,title:party.title,status:party.status,startTime:party.startTime,endTime:party.endTime,expiresAt:party.confirmationExpiresAt,depositDue:party.depositStatus==="PENDING"?Number(party.depositAmount):0,balanceDue:Number(party.balanceDue)};
 }
 
 export async function createParentBooking(tx: Prisma.TransactionClient, tenantId: string, user: {id:string;email:string}, input: unknown) {
@@ -26,10 +30,11 @@ export async function createParentBooking(tx: Prisma.TransactionClient, tenantId
   const addOnIds=(body.addOnIds as string[]).slice().sort();
   if(body.notes!==undefined&&(typeof body.notes!=="string"||body.notes.length>2000))throw new BookingError("Party notes must be under 2,000 characters.");
   const notes=typeof body.notes==="string"?body.notes.trim():"";
-  const signing=validateSigning(body.signing,"RENTAL");
   await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id = ${tenantId} FOR UPDATE`);
   const tenant=await tx.tenant.findUniqueOrThrow({where:{id:tenantId}});
-  if(tenant.slug!=="palmetto-playhouse")throw new BookingError("Parent booking is not configured for this venue.");
+  if(!tenantForms(tenant)?.rental||!tenantForms(tenant)?.liability)throw new BookingError("Parent booking is not configured for this venue.");
+  const form=tenantForms(tenant)!.rental!;
+  const signing=validateSigning(body.signing,"RENTAL",form);
   const parent=await tx.parent.findFirst({where:{tenantId,authUserId:user.id},include:{family:true}});
   if(!parent||parent.family.status!=="ACTIVE")throw new FormError("Set up an active family before booking.",403);
   if(signing.signerEmail!==user.email.toLowerCase().trim()||signing.signerName.toLowerCase()!==`${parent.firstName} ${parent.lastName}`.trim().toLowerCase())throw new FormError("Sign using your parent profile name and verified email.",403);
@@ -40,6 +45,7 @@ export async function createParentBooking(tx: Prisma.TransactionClient, tenantId
     if(existing.primaryParentId!==parent.id||existing.familyId!==parent.familyId||snapshot?.requestFingerprint!==fingerprint)throw new BookingError("This request was already saved with different details. Start a new booking.",409);
     return parentBookingResult(existing);
   }
+  await assertModule(tx,tenantId,"parties");
   if(!/^[0-9]{7,15}$/.test(normalizePhone(parent.phone??"")))throw new BookingError("Contact the venue to update your family phone number before booking.");
   const child=await tx.child.findFirst({where:{id:childId,tenantId,familyId:parent.familyId,active:true}});
   if(!child)throw new FormError("Choose a child from your own family.",403);
@@ -61,9 +67,11 @@ export async function createParentBooking(tx: Prisma.TransactionClient, tenantId
     confirmationExpiresAt:new Date(Date.now()+48*60*60*1000),notes:notes||null,
     pricingSnapshot:{...options.quote,source:"PARENT_PORTAL",requestFingerprint:fingerprint,hostChildId:child.id,timezone:tenant.timezone,customer:{firstName:parent.firstName,lastName:parent.lastName,email:user.email,phone:parent.phone}},
   }});
-  await saveSignedForm(tx,{tenantId,familyId:parent.familyId,parentId:parent.id,kind:"RENTAL",signing,validityDays:null,children:[],partyId:party.id,eventSnapshot:{title:party.title,childId:child.id,childName,packageName:options.pkg.name,setupStartsAt:slot.setupStartsAt.toISOString(),startTime:slot.startTime.toISOString(),endTime:slot.endTime.toISOString(),timezone:tenant.timezone,...options.quote}});
+  await saveSignedForm(tx,{tenantId,familyId:parent.familyId,parentId:parent.id,kind:"RENTAL",form,signing,validityDays:null,children:[],partyId:party.id,eventSnapshot:{title:party.title,childId:child.id,childName,packageName:options.pkg.name,setupStartsAt:slot.setupStartsAt.toISOString(),startTime:slot.startTime.toISOString(),endTime:slot.endTime.toISOString(),timezone:tenant.timezone,...options.quote}});
   for(const addOn of options.addOns)await tx.partyAddOnItem.create({data:{tenantId,partyId:party.id,partyAddOnId:addOn.id,quantity:1,unitPrice:addOn.price,totalPrice:addOn.price}});
   await tx.partyGuest.create({data:{tenantId,partyId:party.id,childId:child.id,guestName:childName,parentName:`${parent.firstName} ${parent.lastName}`,guestEmail:user.email,guestPhone:parent.phone,waiverChildId:coverage.id,waiverStatus:"SIGNED",waiverSignedAt:coverage.signedAt,notes:"Hosting child"}});
-  await tx.eventTimelineItem.create({data:{tenantId,partyId:party.id,title:"Parent booking awaiting deposit",icon:"…",body:"Rental agreement signed. Temporary hold expires in 48 hours. No payment collected; checkout is not connected and this party is not confirmed.",metadata:{source:"parent-portal"}}});
-  return parentBookingResult(party);
+  await tx.eventTimelineItem.create({data:{tenantId,partyId:party.id,title:"Parent booking awaiting deposit",icon:"…",body:"Rental agreement signed. Temporary hold expires in 48 hours. No payment collected. The parent can pay the deposit from their portal; this party is not confirmed.",metadata:{source:"parent-portal"}}});
+  await confirmReadyBooking(tx,tenantId,party.id);
+  await preparePartyMessages(tx,tenantId,party.id);
+  return parentBookingResult(await tx.party.findUniqueOrThrow({where:{id:party.id,tenantId}}));
 }

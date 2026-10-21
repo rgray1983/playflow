@@ -12,15 +12,15 @@ learn from real-world use.
 
 # 🔥 Highest Priority
 
--   Follow the SaaS foundation review in `docs/reviews/2026-10-21-saas-foundation.md`: PlayFlow is the product; Palmetto Playhouse is its first customer.
--   Complete tenant-owned published legal forms and a second-business owner/parent/staff acceptance run.
--   Implement platform subscription billing, trusted billing webhooks and entitlements separately from venue memberships/customer payments. Plan prices, trial terms and past-due policy are pending owner decisions.
--   Finish iPad Square POS / Reader handoff and payment reconciliation.
+Owner direction: finish the operating app and dashboard first. Guided owner onboarding and PlayFlow subscription billing follow afterward.
 
--   Complete owner onboarding: real email verification/recovery and visual review.
--   Add payment refunds/reversals and credit accounting before allowing overpayments.
--   Connect Square sandbox/live deposit checkout and signed webhooks to the parent booking hold flow; gate confirmation and invitation release on payment.
--   Import Wix families and historical waivers with verified account claims and manual review of ambiguous matches.
+1. Party checkout: deposits, balances, extras and iPad Square Reader. Shared checkout, confirmation gates and Reader handoff are implemented; physical Live reader acceptance remains blocked on platform Live setup and callback registration.
+2. Booking communications: durable hold/confirmation/reminder previews and delivery queue implemented. Connect a verified PlayFlow email sender, enable delivery deliberately, configure the reminder processor, and verify delivery with owner-controlled test addresses.
+3. Forms and settings: tenant-owned published waivers/rental agreements and enforced new-activity module switches implemented. Run second-business owner/parent/staff acceptance and review approved wording before rollout.
+4. Reporting and payment corrections: daily collections, Sandbox separation, unpaid balances, Square receipts and guarded Square refund requests implemented. Complete provider Sandbox refund acceptance, cash/manual reversals, external Square refund reconciliation and bank settlement matching.
+5. Dashboard: live collections, separate Sandbox totals, today's unpaid parties, missing agreements/guest waivers and payment/message alerts implemented. Continue business acceptance and tablet visual review.
+
+See `docs/reviews/2026-10-21-operations.md` for exact verification and external setup blockers. PlayFlow remains a multi-business SaaS; Palmetto Playhouse is the first customer.
 
 ------------------------------------------------------------------------
 
@@ -31,10 +31,10 @@ learn from real-world use.
 -   Add public customer booking flow for a Wix booking-page link.
 -   Inspect Wix CMS exports and implement a repeatable migration with source IDs.
 -   Add blackout dates, separate rooms if needed, and guarded rescheduling.
--   Replace demo dashboard totals with live business data.
+-   Refine the live dashboard from front-desk use and verify tablet layouts.
 -   Review restored product/admission prices and complete POS acceptance testing; snacks, retail, custom charges and family payment recording are connected.
--   Reports Dashboard
--   Email & SMS automation
+-   Extend reports with reconciliation, attendance and membership exports.
+-   Verify transactional email delivery; SMS remains deferred.
 -   Staff assignments for parties
 -   Party completion workflow polish
 

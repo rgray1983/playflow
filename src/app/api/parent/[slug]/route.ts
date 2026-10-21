@@ -1,3 +1,5 @@
+import {confirmReadyBooking} from "@/lib/booking/confirmation";
+import {tenantForms} from "@/lib/operations/settings";
 import {childFields,profileFields,updateFamilyRecord} from "@/lib/parent/profile";
 import { ensurePartyLinks, partyLinkPaths } from "@/lib/booking/party-links";
 import { BookingError } from "@/lib/booking/rules";
@@ -7,7 +9,6 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getParentContext, withParent } from "@/lib/parent/access";
 import { FormError, validateSigning, saveSignedForm, signingHash, attachUpcomingCoverage } from "@/lib/waivers/signing";
-import { legalForm } from "@/lib/waivers/forms";
 type Params = {params: Promise<{slug: string}>};
 async function handleGET(request: Request, context: Params) {
   void request; void context;
@@ -17,7 +18,7 @@ async function handleGET(request: Request, context: Params) {
     prisma.child.findMany({where: {tenantId: tenant.id, familyId: parent.familyId, active: true}, orderBy: {firstName:"asc"}, select: {id:true, firstName:true,lastName:true,dateOfBirth:true,allergies:true,medicalNotes:true,updatedAt:true,waivers:{where:{status:"VALID",signedAt:{not:null},waiver:{kind:"LIABILITY",status:"VALID",signedAt:{not:null},version:{not:null},OR:[{expiresAt:null},{expiresAt:{gt:now}}]}},orderBy:{signedAt:"desc"},take:1,select:{id:true,signedAt:true,waiver:{select:{id:true,expiresAt:true,version:true,photoConsent:true}}}}}}),
     prisma.party.findMany({where:{tenantId:tenant.id,primaryParentId:parent.id,familyId:parent.familyId},orderBy:{startTime:"desc"},select:{id:true,title:true,startTime:true,endTime:true,inviteToken:true,hostToken:true,status:true,workflowStep:true,confirmationExpiresAt:true,balanceDue:true,depositAmount:true,depositStatus:true,signedForms:{where:{kind:"RENTAL",status:"VALID",signedAt:{not:null}},select:{id:true,signedAt:true,version:true}}}}),
   ]) : [[], []];
-  return NextResponse.json({business:{name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},email:user.email,parent:parent?{id:parent.id,firstName:parent.firstName,lastName:parent.lastName,phone:parent.phone,updatedAt:parent.updatedAt,address1:parent.address1,address2:parent.address2,city:parent.city,state:parent.state,zip:parent.zip,emergencyContact:parent.emergencyContact,emergencyPhone:parent.emergencyPhone,relationshipToChild:parent.relationshipToChild}:null,children,bookings:bookings.map(({inviteToken,hostToken,...booking})=>({...booking,links:partyLinkPaths({status:booking.status,inviteToken,hostToken})})),forms:tenant.slug === "palmetto-playhouse" ? {liability:legalForm("LIABILITY"),rental:legalForm("RENTAL")} : null,waiverValidityDays:tenant.waiverValidityDays});
+  return NextResponse.json({business:{name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},email:user.email,parent:parent?{id:parent.id,firstName:parent.firstName,lastName:parent.lastName,phone:parent.phone,updatedAt:parent.updatedAt,address1:parent.address1,address2:parent.address2,city:parent.city,state:parent.state,zip:parent.zip,emergencyContact:parent.emergencyContact,emergencyPhone:parent.emergencyPhone,relationshipToChild:parent.relationshipToChild}:null,children,bookings:bookings.map(({inviteToken,hostToken,...booking})=>({...booking,links:partyLinkPaths({status:booking.status,inviteToken,hostToken})})),forms:tenantForms(tenant),waiverValidityDays:tenant.waiverValidityDays});
 }
 async function handlePOST(request: Request, context: Params) {
   void context;
@@ -61,9 +62,11 @@ async function handlePOST(request: Request, context: Params) {
       return {saved:true,childId:child.id};
     }
     if(body.action!=="waiver" && body.action!=="agreement")throw new FormError("Unknown action.");
-    if(tenant.slug!=="palmetto-playhouse")throw new FormError("Forms are not configured for this venue.");
     const kind=body.action==="waiver"?"LIABILITY":"RENTAL";
-    const signing=validateSigning(body.signing,kind);
+    const currentTenant=await tx.tenant.findUniqueOrThrow({where:{id:tenant.id}});
+    const form=kind==="LIABILITY"?tenantForms(currentTenant)?.liability:tenantForms(currentTenant)?.rental;
+    if(!form)throw new FormError("This form is not configured for the venue.");
+    const signing=validateSigning(body.signing,kind,form);
     if(signing.signerEmail!==user.email.trim().toLowerCase())throw new FormError("Use your verified account email to sign.");
     if(signing.signerName.toLowerCase()!==`${parent.firstName} ${parent.lastName}`.trim().toLowerCase())throw new FormError("Use the full name from your parent profile.");
     const ids=kind==="LIABILITY"?body.childIds:[];
@@ -76,7 +79,8 @@ async function handlePOST(request: Request, context: Params) {
     if(existing){if(existing.signedById!==parent.id||existing.requestHash!==requestHash)throw new FormError("Submission ID already used with different details.",409);return{saved:true,waiverId:existing.id};}
     const party=partyId?await tx.party.findFirst({where:{id:partyId,tenantId:tenant.id,familyId:parent.familyId,primaryParentId:parent.id,status:{notIn:["CANCELLED","COMPLETED"]}}}):null;
     if(partyId&&!party)throw new FormError("This booking is not available to this parent.",404);
-    const waiver=await saveSignedForm(tx,{tenantId:tenant.id,familyId:parent.familyId,parentId:parent.id,kind,signing,validityDays:tenant.waiverValidityDays,children,partyId,eventSnapshot:party?{title:party.title,startTime:party.startTime.toISOString(),endTime:party.endTime.toISOString(),depositAmount:Number(party.depositAmount??0)}:undefined});
+    const waiver=await saveSignedForm(tx,{tenantId:tenant.id,familyId:parent.familyId,parentId:parent.id,kind,form,signing,validityDays:tenant.waiverValidityDays,children,partyId,eventSnapshot:party?{title:party.title,startTime:party.startTime.toISOString(),endTime:party.endTime.toISOString(),depositAmount:Number(party.depositAmount??0)}:undefined});
+    if(kind==="RENTAL"&&partyId)await confirmReadyBooking(tx,tenant.id,partyId);
     if(kind==="LIABILITY")await attachUpcomingCoverage(tx,tenant.id,waiver.children);
     return{saved:true,waiverId:waiver.id};
   },{maxWait:10000,timeout:15000});

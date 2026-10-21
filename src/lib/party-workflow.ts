@@ -36,11 +36,11 @@ const basePartyWorkflowSteps: BasePartyWorkflowStep[] = [
     key: "PENDING",
     label: "Pending",
     description:
-      "The date and time are being held. Confirmation is required within 48 hours before the deposit is processed.",
+      "The date and time are held temporarily. The required deposit and signed rental agreement must be on file before confirmation.",
     nextActionLabel: "Confirm Party",
     confirmationTitle: "Confirm this party?",
     confirmationBody:
-      "This will lock the party into the schedule, process the saved deposit method if one is attached, and move the party into the active workflow.",
+      "This checks the required deposit, signed rental agreement and available time, then confirms the party and releases the host and guest links. No card is charged by this action.",
     timelineTitle: "Party Confirmed",
     timelineIcon: "✓",
     partyStatus: "PENDING",

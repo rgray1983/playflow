@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import {test} from "node:test";
+import {test,mock} from "node:test";
 import type {Prisma} from "../src/generated/prisma/client";
-import {ensurePartyLinks,partyLinkPaths,linksReleased} from "../src/lib/booking/party-links";
+mock.module("../src/lib/communications/service.ts",{namedExports:{preparePartyMessages:async()=>{}}});
+const {ensurePartyLinks,partyLinkPaths,linksReleased}=await import("../src/lib/booking/party-links");
 import {BookingError} from "../src/lib/booking/rules";
 
 test("confirmed parties receive distinct private host and guest links, with stable retries",async()=>{

@@ -50,6 +50,7 @@ export default function RsvpPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
 
+  const [form,setForm]=useState<import("@/lib/waivers/forms").LegalForm|null>(null);
   const [event, setEvent] = useState<RsvpEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [responseMode, setResponseMode] = useState<ResponseMode>("");
@@ -66,7 +67,7 @@ export default function RsvpPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/rsvp/${token}`, {signal:controller.signal}).then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error||"Unable to load RSVP.");return data;}).then(data=>{if(!controller.signal.aborted)setEvent(data.event);}).catch(error=>{if(!controller.signal.aborted)setErrorMessage(error.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+    fetch(`/api/rsvp/${token}`, {signal:controller.signal}).then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error||"Unable to load RSVP.");return data;}).then(data=>{if(!controller.signal.aborted){setEvent(data.event);setForm(data.form??null);}}).catch(error=>{if(!controller.signal.aborted)setErrorMessage(error.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return ()=>controller.abort();
   }, [token]);
 
@@ -216,7 +217,7 @@ export default function RsvpPage() {
                 <textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="min-h-[88px] w-full resize-none rounded-[10px] border border-black/10 bg-[#F6F0E6] px-4 py-3 text-sm outline-none" placeholder="Allergies, notes, or special instructions" />
                 {additionalChildren.map((name,index)=><label key={index} className="block text-sm">Additional child {index+2}<input required value={name} maxLength={150} onChange={event=>setAdditionalChildren(current=>current.map((value,i)=>i===index?event.target.value:value))} className="mt-1 w-full rounded-lg border p-3"/><button onClick={()=>setAdditionalChildren(current=>current.filter((_,i)=>i!==index))} className="mt-1 underline">Remove child</button></label>)}
                 <button disabled={additionalChildren.length>=9} onClick={()=>setAdditionalChildren(current=>[...current,""])} className="rounded-lg border px-4 py-2 disabled:opacity-40">Add another attending child</button>
-                <LegalSigningForm kind="LIABILITY" signerName={parentName.trim()} signerEmail={guestEmail.trim().toLowerCase()} onSign={async signing=>{if(!guestName.trim()||additionalChildren.some(name=>!name.trim()))throw new Error("Enter every attending child’s full name above.");await submitRsvp("attending",signing);}} childrenSummary={<p className="text-sm font-semibold">Children covered: {[guestName,...additionalChildren].filter(Boolean).join(", ")||"Enter children above"}</p>}/>
+                <LegalSigningForm form={form} kind="LIABILITY" signerName={parentName.trim()} signerEmail={guestEmail.trim().toLowerCase()} onSign={async signing=>{if(!guestName.trim()||additionalChildren.some(name=>!name.trim()))throw new Error("Enter every attending child’s full name above.");await submitRsvp("attending",signing);}} childrenSummary={<p className="text-sm font-semibold">Children covered: {[guestName,...additionalChildren].filter(Boolean).join(", ")||"Enter children above"}</p>}/>
                 <button onClick={()=>setResponseMode("")} disabled={submitting} className="rounded-lg border p-3">Back</button>
               </div>
             </section>

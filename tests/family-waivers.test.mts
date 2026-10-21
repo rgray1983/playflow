@@ -30,7 +30,7 @@ let lastChildWhere:Record<string,unknown>={};
 const tenant={id:"tenant",slug:"palmetto-playhouse",name:"Palmetto",timezone:"America/New_York",waiverValidityDays:null};
 const child={id:"child",tenantId:"tenant",familyId:"family",firstName:"Test",lastName:"Child",dateOfBirth:null,active:true};
 const db={
- tenant:{findUnique:async({where}:{where:{slug:string}})=>{queryCount++;return where.slug===tenant.slug?tenant:null;}},
+ tenant:{findUniqueOrThrow:async()=>tenant,findUnique:async({where}:{where:{slug:string}})=>{queryCount++;return where.slug===tenant.slug?tenant:null;}},
  parent:{update:async({data}:{data:Record<string,unknown>})=>{ownParent={...claimTarget,...data};return ownParent;},findFirst:async({where}:{where:Record<string,unknown>})=>{queryCount++;if(where.familyClaimHash)return claimTarget;if(where.email)return emailCollision?{id:"unclaimed"}:null;return where.authUserId==="user"&&where.tenantId==="tenant"?ownParent:null;}},
  child:{findMany:async({where}:{where:Record<string,unknown>})=>{lastChildWhere=where;const ids=(where.id as {in?:string[]}|undefined)?.in;return where.tenantId==="tenant"&&where.familyId==="family"&&(!ids||ids.includes("child"))?[child]:[];},create:async({data}:{data:Record<string,unknown>})=>{created++;return{id:"new-child",...data};}},
  party:{findMany:async()=>ownBooking?[ownBooking]:[],findFirst:async({where}:{where:Record<string,unknown>})=>ownBooking&&where.id===ownBooking.id&&where.tenantId===ownBooking.tenantId&&where.familyId===ownBooking.familyId&&where.primaryParentId===ownBooking.primaryParentId?ownBooking:null,update:async({data}:{data:Record<string,unknown>})=>{linkWrites++;Object.assign(ownBooking!,data);return ownBooking;}},
@@ -42,6 +42,7 @@ const db={
  $queryRaw:async()=>[],
  $transaction:async(callback:(tx:unknown)=>Promise<unknown>)=>callback(db),
 };
+mock.module("../src/lib/communications/service.ts",{namedExports:{preparePartyMessages:async()=>{}}});
 mock.module("../src/lib/prisma.ts",{namedExports:{prisma:db}});
 mock.module("../src/lib/auth/server.ts",{namedExports:{getAuth:()=>({getSession:async()=>({data:identity?{user:identity}:null,error:null})})}});
 const {GET,POST}=await import("../src/app/api/parent/[slug]/route");

@@ -1,3 +1,5 @@
+import {scheduleDelivery} from "@/lib/communications/background";
+import {assertBookingReady} from "@/lib/booking/confirmation";
 import { ensurePartyLinks, linksReleased } from "@/lib/booking/party-links";
 import { lockReservation, assertReservation } from "@/lib/booking/service";
 import { BookingError } from "@/lib/booking/rules";
@@ -50,6 +52,7 @@ export async function POST(_request: Request, { params }: Params) {
       const current = await lockReservation(tx, party.tenantId, party.id);
       if (current.status === "CANCELLED") throw new BookingError("This party has been cancelled.");
       if (current.status !== "PENDING") {if(linksReleased(current.status))await ensurePartyLinks(tx,current);return current;}
+      await assertBookingReady(tx,current);
       await assertReservation(tx, current);
       await tx.$executeRawUnsafe(
         'UPDATE "Party" SET status = $1::"PartyStatus", "workflowStep" = $2, "confirmedAt" = NOW(), "updatedAt" = NOW() WHERE id = $3',
@@ -75,6 +78,7 @@ export async function POST(_request: Request, { params }: Params) {
       return tx.party.findUnique({ where: { id: party.id } });
     });
 
+    scheduleDelivery(party.tenantId);
     return NextResponse.json({ party: updatedParty ? {
       id: updatedParty.id, title: updatedParty.title, eventNumber: updatedParty.eventNumber,
       eventDate: updatedParty.eventDate, startTime: updatedParty.startTime,

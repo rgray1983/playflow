@@ -1,3 +1,4 @@
+import {confirmReadyBooking} from "@/lib/booking/confirmation";
 import {assertNoPendingPayment,type PaymentExecution} from "./pending";
 import {Prisma} from "@/generated/prisma/client";
 import {normalizeCommerceSettings} from "@/lib/commerce-settings";
@@ -43,11 +44,15 @@ export async function recordPartyPayment(tx:Prisma.TransactionClient,staff:Visit
       if (appliesToBalance && amount > balance) throw new PaymentError("Payment exceeds the remaining booking balance.", 409);
       const nextBalance = balance - (appliesToBalance ? amount : 0);
       const methodEnum = input.method.toUpperCase() as "CASH" | "CARD" | "OTHER";
-      if(execution.validateOnly)return {paymentId:"",replayed:false};
+      if(execution.validateOnly){
+        if(purpose==="DEPOSIT"&&!await tx.waiver.findFirst({where:{tenantId:staff.tenantId,partyId:eventId,kind:"RENTAL",status:"VALID",signedAt:{not:null},version:{not:null}}}))throw new PaymentError("The hosting parent must sign the rental agreement before charging a deposit.",409);
+        return {paymentId:"",replayed:false};
+      }
       const payment = await tx.eventPayment.create({ data: { tenantId: staff.tenantId, partyId: eventId, requestId: input.requestId, requestFingerprint: fingerprint, purpose, staffName: staff.name, staffEmployeeId: staff.employeeId||null, amount: new Prisma.Decimal(amount / 100), method: methodEnum, status: "PAID", providerMode:execution.sourceMode??null, notes: execution.sourceLabel?`${execution.sourceLabel}${notes?` · ${notes}`:""}`:notes } });
       const depositComplete = (purpose === "DEPOSIT" && amount === depositDue) || (nextBalance === 0 && party.depositStatus === "PENDING" && Number(party.depositAmount ?? 0) > 0 && settings.depositRules.applyDepositToBalance);
       await tx.party.update({ where: { id: eventId, tenantId: staff.tenantId }, data: { balanceDue: new Prisma.Decimal(nextBalance / 100), ...(depositComplete ? { depositStatus: methodEnum === "CASH" ? "CASH_COLLECTED" : methodEnum === "CARD" ? "CARD_COLLECTED" : "OTHER_COLLECTED", depositMethod: methodEnum, depositCapturedAt: new Date() } : {}) } });
       await tx.eventTimelineItem.create({ data: { tenantId: staff.tenantId, partyId: eventId, icon: "$", title: purpose === "DEPOSIT" ? "Deposit Payment Recorded" : "Balance Payment Recorded", body: `$${(amount / 100).toFixed(2)} recorded as ${method.label} by ${staff.name}. Remaining balance: $${(nextBalance / 100).toFixed(2)}.`, metadata: { paymentId: payment.id, purpose, staffEmployeeId: staff.employeeId||null, amount: amount / 100, method: input.method, balanceDue: nextBalance / 100, source: "party-manager" } } });
+      if(party.status==="PENDING")await confirmReadyBooking(tx,staff.tenantId,eventId);
       return { paymentId: payment.id, replayed: false };
 
 }

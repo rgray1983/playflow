@@ -1,3 +1,4 @@
+import {assertModule} from "@/lib/operations/guards";
 import {Prisma} from "@/generated/prisma/client";
 import {FormError,signingHash} from "@/lib/waivers/signing";
 import {childFields,profileFields} from "@/lib/parent/profile";
@@ -69,6 +70,7 @@ export async function checkInVisits(tx:DB,staff:VisitStaff,input:Record<string,u
   await lockVisits(tx,staff.tenantId);
   const existing=await tx.visit.findMany({where:{tenantId:staff.tenantId,requestId},orderBy:{childId:"asc"},select:{id:true,requestHash:true,status:true}});
   if(existing.length){if(existing.length!==entries.length||existing.some(v=>v.requestHash!==hash))throw new FormError("This check-in request already saved different details. Refresh before starting another.",409);return{visitIds:existing.map(v=>v.id),replayed:true};}
+  await assertModule(tx,staff.tenantId,"admissions");
   const family=await tx.family.findFirst({where:{id:familyId,tenantId:staff.tenantId,status:"ACTIVE"}});
   const guardian=await tx.parent.findFirst({where:{id:guardianParentId,tenantId:staff.tenantId,familyId},select:{id:true}});
   if(!family||!guardian)throw new FormError("Choose an active family and its attending guardian.",404);

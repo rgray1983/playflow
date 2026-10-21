@@ -31,6 +31,7 @@ export const rentalClauses = [
 ] as const;
 export const photoConsentText = "I consent to the use of photos or videos of myself or the child(ren) for marketing and social media.";
 export const signatureConsentText = "By typing my full name, I intend to sign this document electronically and confirm that I have read, understood, and voluntarily agreed to its terms.";
-export function legalForm(kind: FormKind) {
+export type LegalForm={kind:FormKind;version:string;title:string;notice:string;clauses:readonly (readonly [string,string,string])[];photoConsentText:string|null;signatureConsentText:string};
+export function legalForm(kind: FormKind):LegalForm {
   return { kind, version: FORM_VERSION, title: kind === "LIABILITY" ? "Palmetto Playhouse LLC Liability Waiver" : "Palmetto Playhouse LLC Party Rental Agreement & Liability Waiver", notice: kind === "RENTAL" ? "IMPORTANT NOTICE: THIS IS A LEGALLY BINDING DOCUMENT. BY SIGNING THIS AGREEMENT, YOU ARE WAIVING CERTAIN LEGAL RIGHTS, INCLUDING THE RIGHT TO FILE A LAWSUIT. PLEASE READ CAREFULLY." : "WAIVER MUST BE SIGNED & FILLED OUT PRIOR TO PLAY", clauses: kind === "LIABILITY" ? liabilityClauses : rentalClauses, photoConsentText: kind === "LIABILITY" ? photoConsentText : null, signatureConsentText };
 }

@@ -19,6 +19,7 @@ import PackagesSettings from "./components/PackagesSettings";
 import StaffRolesSettings from "./components/StaffRolesSettings";
 import BookingScheduleSettings from "./components/BookingScheduleSettings";
 import StaffAccessSettings from "./components/StaffAccessSettings";
+import CommunicationsSettings from "./components/CommunicationsSettings";
 import WaiverSettings from "./components/WaiverSettings";
 
 const settingsTabs = [
@@ -33,6 +34,7 @@ const settingsTabs = [
   "Booking Schedule",
   "Add-Ons",
   "Waivers",
+  "Communications",
   "POS & Products",
   "Commerce",
   "Payment Providers",
@@ -72,6 +74,8 @@ function renderSettingsSection(activeTab: string,onSelect:(tab:string)=>void) {
       return <PackagesSettings />;
     case "Add-Ons":
       return <AddOnsSettings />;
+    case "Communications":
+      return <CommunicationsSettings/>;
     case "Waivers":
       return <WaiverSettings />;
     case "POS & Products":

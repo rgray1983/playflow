@@ -1,3 +1,4 @@
+import {assertModule} from "@/lib/operations/guards";
 import {assertNoPendingPayment,type PaymentExecution} from "@/lib/payments/pending";
 import {productCartQuote} from "./products";
 import { Prisma } from "@/generated/prisma/client";
@@ -61,6 +62,7 @@ export async function enrollMembership(tx: DB, staff: VisitStaff, input: Record<
             throw new FormError("This request already saved different details.", 409);
         return { saleId: existing.id, replayed: true };
     }
+    await assertModule(tx,staff.tenantId,"memberships");
     const prepared = await membershipQuote(tx, staff, input);
     if (input.quoteHash !== prepared.quoteHash)
         throw new FormError("The plan or total changed. Review a fresh quote before enrolling.", 409);
@@ -231,6 +233,7 @@ export async function createProductSale(tx:DB,staff:VisitStaff,input:Record<stri
  if(existing){if(existing.requestHash!==hash||!["RETAIL","CUSTOM"].includes(existing.kind))throw new FormError("This request already saved a different sale.",409);return{saleId:existing.id,replayed:true};}
  if(!await tx.family.findFirst({where:{id:familyId,tenantId:staff.tenantId,status:"ACTIVE"}}))throw new FormError("Active family not found.",404);
  const prepared=await productCartQuote(tx,staff,input);
+ if(prepared.products.length)await assertModule(tx,staff.tenantId,"retail");
  if(input.quoteHash!==prepared.quoteHash)throw new FormError("A product price or total changed. Review the refreshed total.",409);
  const sale=await createSale(tx,staff,{familyId,requestId,requestHash:hash,kind:prepared.products.length?"RETAIL":"CUSTOM",quote:prepared.quote});
  return{saleId:sale.id,replayed:false};

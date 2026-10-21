@@ -1,3 +1,4 @@
+import {scheduleDelivery} from "@/lib/communications/background";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -24,6 +25,7 @@ export function withParent<T extends (...args: never[]) => Promise<Response>>(ha
       const context = await resolveParent(params.slug);
       const response = await storage.run(context, () => handler(...args));
       response.headers.set("Cache-Control", "private, no-store");
+      if(response.ok&&!["GET","HEAD","OPTIONS"].includes(request.method))scheduleDelivery(context.tenant.id);
       return response;
     } catch (error) {
       if (error instanceof FormError) return NextResponse.json({error: error.message}, {status: error.status});

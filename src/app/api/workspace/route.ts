@@ -1,3 +1,6 @@
+import {dashboardFinance} from "@/lib/reports/dashboard";
+import {hasPermission} from "@/lib/auth/permissions";
+import {tenantForms} from "@/lib/operations/settings";
 import {NextResponse} from "next/server";
 import {prisma} from "@/lib/prisma";
 import {getStaffContext,getStaffTenant,withStaff} from "@/lib/auth/staff";
@@ -23,7 +26,8 @@ async function get(){
   prisma.visit.findMany({where:{tenantId:tenant.id,status:"CHECKED_IN",checkedOutAt:null},select:{id:true,checkedInAt:true,visitType:true,child:{select:{firstName:true,lastName:true}}},orderBy:[{checkedInAt:"desc"},{id:"asc"}],take:5}),
   prisma.party.findMany({where:{...partyWhere,startTime:{gte:start,lt:end}},select:{id:true,title:true,startTime:true,status:true},orderBy:[{startTime:"asc"},{id:"asc"}],take:5}),
  ]);
- const setup=workspaceSetup({profile:!!(tenant.phone&&tenant.email&&tenant.address1&&tenant.city),admissions,eventTypes,packages,staff:staffCount,forms:tenant.slug==="palmetto-playhouse",payment});
- return NextResponse.json({business:{name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},role:staff.accessRole,metrics:{families,children,inside,partiesToday},visits,events,setup,billing:{status:"NOT_AVAILABLE",message:"PlayFlow subscription billing is not active. Venue customer payments through Square are separate."},payment:{mode:payment.mode,ready:payment.ready},today});
+ const [finance,missingAgreements,missingGuestWaivers]=await Promise.all([hasPermission(staff.accessRole,"payments.write")?dashboardFinance(tenant.id,tenant.timezone,today):null,prisma.party.count({where:{...partyWhere,startTime:{gte:start,lt:end},signedForms:{none:{tenantId:tenant.id,kind:"RENTAL",status:"VALID",signedAt:{not:null}}}}}),prisma.partyGuest.count({where:{tenantId:tenant.id,rsvpStatus:{not:"DECLINED"},party:{...partyWhere,startTime:{gte:start,lt:end}},OR:[{waiverChildId:null},{waiverChild:{status:{not:"VALID"}}},{waiverChild:{waiver:{status:{not:"VALID"}}}},{waiverChild:{waiver:{expiresAt:{lte:now}}}}]}})]);
+ const setup=workspaceSetup({profile:!!(tenant.phone&&tenant.email&&tenant.address1&&tenant.city),admissions,eventTypes,packages,staff:staffCount,forms:!!tenantForms(tenant)?.liability&&!!tenantForms(tenant)?.rental,payment});
+ return NextResponse.json({business:{name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},role:staff.accessRole,finance,attention:{missingAgreements,missingGuestWaivers},metrics:{families,children,inside,partiesToday},visits,events,setup,billing:{status:"NOT_AVAILABLE",message:"PlayFlow subscription billing is not active. Venue customer payments through Square are separate."},payment:{mode:payment.mode,ready:payment.ready},today});
 }
 export const GET = withStaff("read",get);

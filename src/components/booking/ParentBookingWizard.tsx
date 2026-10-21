@@ -7,6 +7,7 @@ import LegalSigningForm, { type SigningSubmission } from "@/components/forms/Leg
 
 type Child = {id:string;firstName:string;lastName:string;waivers:{id:string}[]};
 type Catalog = {
+  forms:{liability:import("@/lib/waivers/forms").LegalForm;rental:import("@/lib/waivers/forms").LegalForm};
   eventTypes:{id:string;name:string;description:string|null}[];
   packages:{id:string;eventTypeId:string|null;name:string;description:string|null;price:number;durationMinutes:number|null;guestLimit:number|null}[];
   addOns:{id:string;name:string;description:string|null;price:number;durationMinutes:number}[];
@@ -94,10 +95,10 @@ export default function ParentBookingWizard({slug,parent,email,familyChildren,on
         </section>}
         {step===2&&<section className="space-y-5">
           <p className="rounded-lg bg-amber-50 p-4 text-sm">Signing creates a 48-hour temporary hold awaiting your deposit. Pay the deposit after signing or arrange payment with the venue. The party remains unconfirmed until the venue confirms it.</p>
-          {covered?<p className="font-semibold text-green-800">Liability waiver on file for {child?.firstName}.</p>:<><p>A signed liability waiver is required for {child?.firstName}.</p><button className={button} onClick={()=>setShowWaiver(true)}>Complete child’s liability waiver</button>{showWaiver&&<LegalSigningForm scrollTerms={false} kind="LIABILITY" signerName={fullName} signerEmail={email} onSign={signWaiver} childrenSummary={<p>Child covered: {child?.firstName} {child?.lastName}</p>}/>}</>}
+          {covered?<p className="font-semibold text-green-800">Liability waiver on file for {child?.firstName}.</p>:<><p>A signed liability waiver is required for {child?.firstName}.</p><button className={button} onClick={()=>setShowWaiver(true)}>Complete child’s liability waiver</button>{showWaiver&&<LegalSigningForm scrollTerms={false} kind="LIABILITY" form={catalog?.forms.liability} signerName={fullName} signerEmail={email} onSign={signWaiver} childrenSummary={<p>Child covered: {child?.firstName} {child?.lastName}</p>}/>}</>}
           <div className="flex items-center justify-between gap-3"><button disabled={busy} className="underline" onClick={()=>back(1)}>Back to times</button><button disabled={!covered||busy} className={button} onClick={()=>setStep(3)}>Read rental agreement</button></div>
         </section>}
-        {step===3&&<><button disabled={busy} className="underline" onClick={()=>back(2)}>Back to review</button><LegalSigningForm scrollTerms={false} kind="RENTAL" signerName={fullName} signerEmail={email} onSign={reserve} childrenSummary={<p className="text-sm">Signing saves the party details above as an unpaid temporary hold. No charge will be made.</p>}/></>}
+        {step===3&&<><button disabled={busy} className="underline" onClick={()=>back(2)}>Back to review</button><LegalSigningForm scrollTerms={false} kind="RENTAL" form={catalog?.forms.rental} signerName={fullName} signerEmail={email} onSign={reserve} childrenSummary={<p className="text-sm">Signing saves the party details above as an unpaid temporary hold. No charge will be made.</p>}/></>}
       </>}
     </div>
   {paymentOpen&&saved&&<SquareCardPayment slug={slug} payload={{kind:"party",partyId:saved.id,purpose:"DEPOSIT",amountCents:Math.round(saved.depositDue*100)}} onClose={()=>setPaymentOpen(false)} onPaid={()=>{setPaymentPaid(true);onSaved().catch(()=>{});}}/>}</SigningDialog>;

@@ -1,10 +1,10 @@
 export const accessRoles = ["OWNER", "MANAGER", "FRONT_DESK", "PARTY_HOST"] as const;
 export type AccessRole = typeof accessRoles[number];
-export type Permission = "read" | "settings.write" | "parties.write" | "payments.write" | "guests.write" | "visits.write" | "incidents.write" | "staff.manage";
+export type Permission = "read" | "settings.write" | "parties.write" | "payments.write" | "payments.refund" | "guests.write" | "visits.write" | "incidents.write" | "staff.manage";
 
 const permissions: Record<AccessRole, readonly Permission[]> = {
-  OWNER: ["read", "settings.write", "parties.write", "payments.write", "guests.write", "visits.write", "incidents.write", "staff.manage"],
-  MANAGER: ["read", "settings.write", "parties.write", "payments.write", "guests.write", "visits.write", "incidents.write"],
+  OWNER: ["payments.refund", "read", "settings.write", "parties.write", "payments.write", "guests.write", "visits.write", "incidents.write", "staff.manage"],
+  MANAGER: ["payments.refund", "read", "settings.write", "parties.write", "payments.write", "guests.write", "visits.write", "incidents.write"],
   FRONT_DESK: ["read", "parties.write", "payments.write", "guests.write", "visits.write", "incidents.write"],
   PARTY_HOST: ["read", "guests.write", "incidents.write"],
 };

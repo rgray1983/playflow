@@ -1,6 +1,6 @@
 export type Admission={id:string;name:string;price:number};
 export type InsideVisit={counterSale?:{status:string;totalCents:number;payments:{amountCents:number}[]}|null;id:string;familyId:string;checkedInAt:string;visitType:string;admissionSnapshot:{mode?:string}|null;child:{firstName:string;lastName:string};family:{name:string};guardianParent:{firstName:string;lastName:string}|null};
-export type CheckInOverview={business:{name:string;slug:string;timezone:string};visits:InsideVisit[];insideCount:number;page:number;pageSize:number;admissions:Admission[];formsAvailable:boolean};
+export type CheckInOverview={business:{name:string;slug:string;timezone:string};visits:InsideVisit[];insideCount:number;page:number;pageSize:number;admissions:Admission[];forms?:{liability:import("@/lib/waivers/forms").LegalForm|null};formsAvailable:boolean};
 export type DeskGuardian={id:string;firstName:string;lastName:string;email:string|null;phone:string|null};
 export type DeskMembership={id:string;name:string;status:string;startsAt:string;endsAt:string|null;eligible:boolean;reason:string;remaining:number|null};
 export type DeskChild={id:string;firstName:string;lastName:string;dateOfBirth:string|null;allergies:string|null;medicalNotes:string|null;waiver:{id:string;signedAt:string;waiver:{version:string;expiresAt:string|null}}|null;activeVisit:{id:string;checkedInAt:string;visitType:string}|null;memberships:DeskMembership[]};

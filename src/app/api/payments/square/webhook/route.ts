@@ -1,3 +1,4 @@
+import {scheduleDelivery} from "@/lib/communications/background";
 import {NextResponse} from "next/server";
 import {prisma} from "@/lib/prisma";
 import {validSignature} from "@/lib/payments/square/crypto";
@@ -14,6 +15,6 @@ export async function POST(request:Request){
   const intent=await prisma.providerCheckout.findUnique({where:{id:payment.reference_id}});if(!intent||intent.mode!==mode||intent.status==="PAID")return NextResponse.json({received:true});
   const connection=await prisma.paymentConnection.findUniqueOrThrow({where:{id:intent.connectionId}});if(connection.merchantId!==event.merchant_id)return NextResponse.json({error:"Merchant mismatch."},{status:403});
   const verified=await squareRequest<{payment:SquarePayment}>(squareMode(mode),`/v2/payments/${encodeURIComponent(payment.id)}`,await accessToken(connection));
-  await settleCheckout(intent.id,verified.payment);return NextResponse.json({received:true});
+  await settleCheckout(intent.id,verified.payment);scheduleDelivery(intent.tenantId);return NextResponse.json({received:true});
  }catch{return NextResponse.json({error:"Payment notification could not be reconciled. Retry."},{status:500});}
 }

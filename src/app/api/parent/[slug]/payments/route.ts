@@ -20,7 +20,7 @@ async function post(request:Request){try{const context=getParentContext(),body=a
  const intent=await prisma.providerCheckout.findFirst({where:{id:body.id,tenantId:context.tenant.id}});if(!intent)throw new PaymentError("Checkout not found.",404);const payload=intent.payload as {partyId?:string};await owns(payload.partyId);return NextResponse.json(publicCheckout(await processCheckout(intent.id)));
  }
  await owns(body.partyId);if(body.kind!=="party"||body.purpose!=="DEPOSIT")throw new PaymentError("Use the venue for other payment types.",403);
- const actor={tenantId:context.tenant.id,employeeId:"",name:`Parent portal: ${context.parent!.firstName} ${context.parent!.lastName}`};const intent=await prepareCheckout(actor,body);return NextResponse.json(publicCheckout(await processCheckout(intent.id)));
+ const actor={tenantId:context.tenant.id,employeeId:"",name:`Parent portal: ${context.parent!.firstName} ${context.parent!.lastName}`};const intent=await prepareCheckout(actor,{...body,channel:"CARD"});return NextResponse.json(publicCheckout(await processCheckout(intent.id)));
 }catch(e){return checkoutFailure(e);}}
 export const GET = withParent(get);
 export const POST = withParent(post);

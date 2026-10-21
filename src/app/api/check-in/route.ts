@@ -1,3 +1,4 @@
+import {tenantForms} from "@/lib/operations/settings";
 import {billAdmissions} from "@/lib/counter/service";
 import {hasPermission} from "@/lib/auth/permissions";
 import {NextResponse} from "next/server";
@@ -36,7 +37,7 @@ async function handleGET(request:Request){
       prisma.visit.findMany({where,skip:(page-1)*50,take:50,orderBy:[{checkedInAt:"asc"},{id:"asc"}],select:{id:true,familyId:true,checkedInAt:true,visitType:true,admissionSnapshot:true,counterSale:{select:{status:true,totalCents:true,payments:{select:{amountCents:true}}}},child:{select:{firstName:true,lastName:true}},family:{select:{name:true}},guardianParent:{select:{firstName:true,lastName:true}}}}),
       prisma.visit.count({where}),prisma.admissionType.findMany({where:{tenantId:tenant.id,active:true},orderBy:{name:"asc"},take:100,select:{id:true,name:true,price:true}}),
     ]);
-    return NextResponse.json({business:{name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},visits,insideCount,page,pageSize:50,admissions:admissions.map(a=>({...a,price:Number(a.price)})),formsAvailable:tenant.slug==="palmetto-playhouse"});
+    return NextResponse.json({business:{name:tenant.name,slug:tenant.slug,timezone:tenant.timezone},visits,insideCount,page,pageSize:50,admissions:admissions.map(a=>({...a,price:Number(a.price)})),formsAvailable:!!tenantForms(tenant)?.liability,forms:tenantForms(tenant)});
   }catch(error){return errorResponse(error);}
 }
 async function handlePOST(request:Request){

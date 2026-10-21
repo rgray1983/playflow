@@ -1,3 +1,4 @@
+import {preparePartyMessages} from "@/lib/communications/service";
 import { randomBytes } from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
 import { BookingError } from "./rules";
@@ -18,5 +19,6 @@ export async function ensurePartyLinks(tx:Prisma.TransactionClient,party:LinkPar
     await tx.party.update({where:{id:party.id,tenantId:party.tenantId},data:{inviteToken,hostToken,inviteUrl}});
     await tx.eventTimelineItem.create({data:{tenantId:party.tenantId,partyId:party.id,title:"Party links available",body:"Separate private host and shareable guest links are ready. No email was sent.",icon:"🔗"}});
   }
+  await preparePartyMessages(tx,party.tenantId,party.id);
   return {inviteToken,hostToken,inviteUrl:party.inviteUrl||inviteUrl};
 }

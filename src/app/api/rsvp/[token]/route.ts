@@ -1,3 +1,4 @@
+import {tenantForms} from "@/lib/operations/settings";
 import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { FormError, validateSigning, saveSignedForm, signingHash } from "@/lib/waivers/signing";
@@ -60,6 +61,7 @@ export async function GET(_request: Request, { params }: Params) {
 
     return NextResponse.json({
       event: serializeParty(party),
+      form:tenantForms(await prisma.tenant.findUniqueOrThrow({where:{id:party.tenantId}}))?.liability??null,
     });
   } catch (error) {
     return jsonError(error, "Unable to load RSVP event.");
@@ -80,8 +82,6 @@ export async function POST(request: Request, { params }: Params) {
     if(!Array.isArray(names)||names.length<1||names.length>10||names.some(name=>typeof name!=="string"||!name.trim()||name.length>150))throw new FormError("List between one and ten children individually.");
     const childNames=names.map((name:string)=>name.trim());
     if(new Set(childNames.map((name:string)=>name.toLowerCase())).size!==childNames.length)throw new FormError("List each child once.");
-    const signing=body.response==="attending"?validateSigning(body.signing,"LIABILITY"):null;
-    if(signing&&(signing.signerName!==parentName||signing.signerEmail!==email))throw new FormError("The signer name and email must match the guardian details.");
     const result=await prisma.$transaction(async tx=>{
       const found=await tx.party.findUnique({where:{inviteToken:token}});
       if(!found)throw new FormError("RSVP link was not found.",404);
@@ -89,7 +89,10 @@ export async function POST(request: Request, { params }: Params) {
       const party=await tx.party.findUniqueOrThrow({where:{id:found.id}});
       if(["CANCELLED","COMPLETED"].includes(party.status)||(party.status==="PENDING"&&party.confirmationExpiresAt&&party.confirmationExpiresAt.getTime()<=Date.now()))throw new FormError("This party is no longer accepting RSVPs.",410);
       const tenant=await tx.tenant.findUniqueOrThrow({where:{id:party.tenantId}});
-      if(signing&&tenant.slug!=="palmetto-playhouse")throw new FormError("The venue has not configured its waiver.");
+      const form=tenantForms(tenant)?.liability;
+      if(body.response==="attending"&&!form)throw new FormError("The venue has not configured its waiver.");
+      const signing=body.response==="attending"?validateSigning(body.signing,"LIABILITY",form!):null;
+      if(signing&&(signing.signerName!==parentName||signing.signerEmail!==email))throw new FormError("The signer name and email must match the guardian details.");
       const hash=signingHash({signing,childNames,parentName,email,phone,notes,partyId:party.id});
       if(signing){
         const prior=await tx.waiver.findFirst({where:{tenantId:tenant.id,requestId:signing.requestId}});
@@ -102,7 +105,7 @@ export async function POST(request: Request, { params }: Params) {
         const family=await tx.family.create({data:{tenantId:tenant.id,name:`${parentName} Family`}});
         const parent=await tx.parent.create({data:{tenantId:tenant.id,familyId:family.id,firstName:parentName,lastName:"",email,phone:phone||null}});
         for(const name of childNames){const [firstName,...rest]=name.split(/\s+/);children.push(await tx.child.create({data:{tenantId:tenant.id,familyId:family.id,firstName,lastName:rest.join(" ")}}));}
-        signed=await saveSignedForm(tx,{tenantId:tenant.id,familyId:family.id,parentId:parent.id,kind:"LIABILITY",signing,validityDays:tenant.waiverValidityDays,children,partyId:party.id,identityMethod:"INVITATION_FORM"});
+        signed=await saveSignedForm(tx,{tenantId:tenant.id,familyId:family.id,parentId:parent.id,kind:"LIABILITY",form:form!,signing,validityDays:tenant.waiverValidityDays,children,partyId:party.id,identityMethod:"INVITATION_FORM"});
         await tx.waiver.update({where:{id:signed.id},data:{requestHash:hash}});
       }
       for(let index=0;index<childNames.length;index++){

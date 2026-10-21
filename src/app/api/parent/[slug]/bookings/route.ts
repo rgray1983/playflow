@@ -1,3 +1,4 @@
+import {tenantForms} from "@/lib/operations/settings";
 import {assertNoPendingPayment} from "@/lib/payments/pending";
 import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
@@ -13,7 +14,7 @@ async function handleGET(request: Request, context:Params) {
   void context;
   const {tenant,parent}=getParentContext();
   if(!parent)throw new FormError("Set up your family before booking.",403);
-  if(tenant.slug!=="palmetto-playhouse")throw new FormError("Parent booking is not configured for this venue.",404);
+  if(!tenantForms(tenant)?.rental||!tenantForms(tenant)?.liability)throw new FormError("Parent booking is not configured for this venue.",404);
   const query=new URL(request.url).searchParams;
   if(query.has("date")){
     try {
@@ -26,7 +27,7 @@ async function handleGET(request: Request, context:Params) {
     prisma.package.findMany({where:{tenantId:tenant.id,active:true},orderBy:{name:"asc"},select:{id:true,eventTypeId:true,name:true,description:true,price:true,durationMinutes:true,guestLimit:true}}),
     prisma.partyAddOn.findMany({where:{tenantId:tenant.id,active:true},orderBy:{name:"asc"},select:{id:true,name:true,description:true,price:true,durationMinutes:true}}),
   ]);
-  return NextResponse.json({eventTypes,packages:packages.map(p=>({...p,price:Number(p.price)})),addOns:addOns.map(a=>({...a,price:Number(a.price)})),setupMinutes:scheduleFrom(tenant.bookingSettings).setupMinutes});
+  return NextResponse.json({forms:tenantForms(tenant),eventTypes,packages:packages.map(p=>({...p,price:Number(p.price)})),addOns:addOns.map(a=>({...a,price:Number(a.price)})),setupMinutes:scheduleFrom(tenant.bookingSettings).setupMinutes});
 }
 async function handlePOST(request:Request,context:Params){
   void context;

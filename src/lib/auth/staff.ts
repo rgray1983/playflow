@@ -1,3 +1,4 @@
+import {scheduleDelivery} from "@/lib/communications/background";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -75,6 +76,8 @@ export function withStaff<T extends (...args: never[]) => Promise<Response>>(per
       const staff = await requireStaff(permission);
       const response = await staffStorage.run(staff, () => handler(...args));
       response.headers.set("Cache-Control", "private, no-store");
+      const request=(args as unknown[])[0] as Request|undefined;
+      if(response.ok&&request&&!["GET","HEAD","OPTIONS"].includes(request.method))scheduleDelivery(staff.tenantId);
       return response;
     } catch (error) { return accessErrorResponse(error); }
   };

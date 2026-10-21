@@ -11,5 +11,5 @@ export const moduleCatalog: {key:string;name:string;readiness:ModuleReadiness;sc
   {key:"classes",name:"Classes",readiness:"planned",scope:"No recurring class roster or customer enrollment workflow yet.",remaining:"Build schedules, instructors, capacity, waitlists and enrollment/attendance."},
   {key:"field_trips",name:"Field Trips",readiness:"planned",scope:"An event type can name a field trip; school/group operations are not built.",remaining:"Add school contacts, group headcounts, group billing, child waivers and attendance."},
   {key:"rentals",name:"Rentals",readiness:"planned",scope:"Party rental agreements work; general equipment/room rentals are separate future work.",remaining:"Define rentable resources, availability, damage/deposit rules and checkout/return."},
-  {key:"reports",name:"Reports",readiness:"planned",scope:"Transactions and attendance are saved; a reporting dashboard is not implemented.",remaining:"Build reconciled daily sales, unpaid balances, visit/waiver counts and membership usage reports."},
+  {key:"reports",name:"Reports",readiness:"partial",scope:"Daily collections, separate Sandbox totals, unpaid balances, receipts and Square refund tracking.",remaining:"Complete cash reconciliation, externally issued refund imports, bank settlement matching and attendance/membership exports."},
 ];

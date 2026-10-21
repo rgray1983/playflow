@@ -24,10 +24,11 @@ const party = {
 };
 
 // Match the database's unique-field lookup, rather than accepting any token.
+mock.module("../src/lib/communications/service.ts",{namedExports:{preparePartyMessages:async()=>{}}});
 mock.module("../src/lib/prisma.ts", {
   namedExports: {
     prisma: {
-      tenant: { findUnique: async () => ({ id: "test-tenant" }) },
+      tenant: { findUniqueOrThrow:async()=>({id:"test-tenant",slug:"palmetto-playhouse"}),findUnique: async () => ({ id: "test-tenant" }) },
       eventType: { findFirst: async () => ({ id: "test-event-type" }) },
       package: { findFirst: async () => ({ id: "test-package", eventTypeId: null }) },
       partyAddOn: { findMany: async () => [] },

@@ -106,6 +106,7 @@ model Tenant {
   ownerAuthUserId String? @unique
   timezone  String   @default("America/New_York")
   bookingSettings Json?
+  operationalSettings Json?
   waiverValidityDays Int?
   phone     String?
   email     String?
@@ -125,6 +126,8 @@ model Tenant {
 
   paymentConnections PaymentConnection[]
   providerCheckouts ProviderCheckout[]
+  bookingMessages BookingMessage[]
+  paymentRefunds PaymentRefund[]
   counterProducts CounterProduct[]
   counterSales CounterSale[]
   counterPayments CounterPayment[]
@@ -516,6 +519,7 @@ model WaiverChild {
 }
 
 model Party {
+  bookingMessages BookingMessage[]
   id             String      @id @default(cuid())
   tenantId       String
   familyId       String?
@@ -849,6 +853,10 @@ model PaymentConnection {
 }
 
 model ProviderCheckout {
+  channel String @default("CARD")
+  readerState String?
+  readerOrderId String?
+  refunds PaymentRefund[]
   id String @id @default(cuid())
   tenantId String
   connectionId String
@@ -870,4 +878,47 @@ model ProviderCheckout {
   tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
   @@unique([tenantId,requestId])
   @@index([tenantId,status])
+}
+
+model BookingMessage {
+ id String @id @default(cuid())
+ tenantId String
+ tenant Tenant @relation(fields:[tenantId],references:[id])
+ partyId String
+ party Party @relation(fields:[partyId],references:[id])
+ kind String
+ dedupeKey String
+ recipient String
+ subject String
+ body String
+ status String @default("DRAFT")
+ scheduledAt DateTime @default(now())
+ sentAt DateTime?
+ providerId String?
+ attemptedAt DateTime?
+ failureCode String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@unique([tenantId,dedupeKey])
+ @@index([tenantId,status,scheduledAt])
+}
+model PaymentRefund {
+ id String @id @default(cuid())
+ tenantId String
+ tenant Tenant @relation(fields:[tenantId],references:[id])
+ checkoutId String
+ checkout ProviderCheckout @relation(fields:[checkoutId],references:[id])
+ requestId String
+ amountCents Int
+ reason String
+ staffId String
+ staffName String
+ status String @default("PENDING")
+ providerRefundId String? @unique
+ mode String
+ createdAt DateTime @default(now())
+ completedAt DateTime?
+ updatedAt DateTime @updatedAt
+ @@unique([tenantId,requestId])
+ @@index([tenantId,createdAt])
 }
