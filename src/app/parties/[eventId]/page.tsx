@@ -250,8 +250,7 @@ export default function PartyManagerPage() {
   }
 
   return (
-    <main className="h-screen overflow-hidden bg-[#E7E3DA] p-5 text-[#202633] antialiased">
-      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] bg-[#F6F0E6] shadow-sm">
+    <>
         <section className="flex h-full min-h-0 flex-col overflow-hidden px-6 py-6">
           <header className="mb-5 flex shrink-0 items-start justify-between gap-5">
             <div>
@@ -332,10 +331,10 @@ export default function PartyManagerPage() {
             </aside>
           </div>
         </section>
-      </div>
+
 
       {checkoutOpen&&<PartyCheckout eventId={party.id} onClose={()=>setCheckoutOpen(false)} onChanged={()=>{loadParty({silent:true});}}/>}
       {guardrail && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="w-full max-w-md rounded-[18px] bg-white p-6 shadow-xl"><p className="text-sm font-semibold text-[#8A6D3B]">Guardrail</p><h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#1E293B]">{guardrail.type === "cancel" ? `Cancel ${party.title}?` : guardrail.type === "complete" ? `Complete ${party.title}?` : guardrail.step?.confirmationTitle}</h2><p className="mt-3 text-sm leading-6 text-[#6B7280]">{guardrail.type === "cancel" ? "This will remove the party from the active dashboard. The booking, guest list, timeline, payments, and incident reports will be preserved." : guardrail.type === "complete" ? "This closes the party workflow and moves it out of active operations. Records, guests, payments, incident reports, and timeline history stay preserved." : guardrail.step?.confirmationBody}</p><div className="mt-4 rounded-[12px] bg-[#F6F0E6] p-4 text-sm"><p className="font-semibold text-[#1E293B]">{party.date}</p><p className="mt-1 text-[#6B7280]">{party.time}</p></div><div className="mt-6 grid grid-cols-2 gap-3"><button onClick={() => setGuardrail(null)} className="rounded-[10px] border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#1E293B]">Not Yet</button><button onClick={() => guardrail.type === "cancel" ? cancelParty() : guardrail.type === "complete" ? runPartyWorkflowAction("complete") : runPartyWorkflowAction("advance")} disabled={Boolean(activePartyAction)} className={`rounded-[10px] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 ${guardrail.type === "cancel" ? "bg-[#9F1239]" : "bg-[#1E293B]"}`}>{activePartyAction ? "Working..." : guardrail.type === "cancel" ? "Yes, Cancel Party" : guardrail.type === "complete" ? "Complete Party" : guardrail.step?.nextActionLabel}</button></div></div></div>}
-    </main>
+    </>
   );
 }

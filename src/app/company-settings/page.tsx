@@ -1,8 +1,5 @@
 "use client";
-import {BusinessName} from "@/components/StaffIdentity";
 
-import Link from "next/link";
-import SignOutButton from "@/components/SignOutButton";
 import { useEffect, useState } from "react";
 import AddOnsSettings from "./components/AddOnsSettings";
 import AdmissionsSettings from "./components/AdmissionsSettings";
@@ -42,15 +39,6 @@ const settingsTabs = [
   "Staff Access",
 ];
 
-const navItems = [
-  { label: "Dashboard", icon: "▣", href: "/" },
-  { label: "Check-In", icon: "✓", href: "/check-in" },
-  { label: "Calendar", icon: "◷", href: "/calendar" },
-  { label: "Party & Events", icon: "★", href: "/parties" },
-  { label: "POS", icon: "$", href: "/pos" },
-  { label: "Reports", icon: "▥", href: "/reports" },
-  { label: "Company Settings", icon: "⚙", href: "/company-settings" },
-];
 
 function renderSettingsSection(activeTab: string,onSelect:(tab:string)=>void) {
   switch (activeTab) {
@@ -99,50 +87,8 @@ export default function CompanySettingsPage() {
   useEffect(()=>{const section=new URLSearchParams(window.location.search).get("section");if(section&&settingsTabs.includes(section))Promise.resolve(section).then(setActiveTab);},[]);
 
   return (
-    <main className="h-dvh overflow-hidden bg-[#E7E3DA] p-2 sm:p-5 text-[#202633] antialiased">
-      <div className="flex h-full min-h-0 overflow-hidden rounded-[18px] bg-[#F6F0E6] shadow-sm">
-        <aside className="relative hidden lg:block h-full min-h-0 w-[235px] shrink-0 overflow-y-auto border-r border-black/10 bg-[#F2EFE8] px-6 py-7 pb-24">
-          <div className="mb-9">
-            <div className="mb-2 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#1E293B] text-sm font-semibold text-white">
-                PF
-              </div>
-              <div>
-                <h1 className="text-lg font-semibold tracking-[-0.03em]">
-                  PlayFlow
-                </h1>
-                <p className="text-xs text-[#6B7280]"><BusinessName/></p>
-              </div>
-            </div>
-          </div>
+    <>
 
-          <nav className="space-y-1">
-            {navItems.map((item) => {
-              const isActive = item.href === "/company-settings";
-
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`flex w-full items-center gap-4 rounded-[8px] px-4 py-3 text-left text-sm font-semibold transition ${
-                    isActive
-                      ? "bg-white text-[#111827] shadow-sm"
-                      : "text-[#5B6270] hover:bg-white/70 hover:text-[#111827]"
-                  }`}
-                >
-                  <span className="flex h-5 w-5 items-center justify-center text-base">
-                    {item.icon}
-                  </span>
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          <div className="absolute bottom-7 left-6 right-6">
-            <SignOutButton />
-          </div>
-        </aside>
 
         <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3 py-4 sm:px-6 sm:py-6">
           <header className="mb-5 flex shrink-0 items-start justify-between gap-5">
@@ -213,7 +159,7 @@ export default function CompanySettingsPage() {
             </section>
           </div>
         </section>
-      </div>
-    </main>
+
+    </>
   );
 }

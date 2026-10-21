@@ -1,5 +1,4 @@
 "use client";
-import {BusinessName} from "@/components/StaffIdentity";
 
 import PartyCheckout from "@/components/counter/PartyCheckout";
 import Link from "next/link";
@@ -40,16 +39,6 @@ const emptyEventType: EventTypeOption = { id: "", name: "Choose an event type", 
 const emptyPackage: PackageOption = { id: "", name: "Choose a package", description: "", price: 0, depositAmount: 0, guestLimit: null, durationMinutes: null, active: false };
 type Availability = { slots: { time: string; label: string; available: boolean }[]; timezone: string; quote: { total: number; depositDue: number; balanceDue: number; tax: number; fees: {name: string; amount: number}[] } };
 
-const navItems = [
-  { label: "Dashboard", icon: "▣", href: "/" },
-  { label: "Check-In", icon: "✓", href: "/check-in" },
-  { label: "Calendar", icon: "◷", href: "/calendar" },
-  { label: "Bookings", icon: "✎", href: "/bookings" },
-  { label: "Party & Event Manager", icon: "★", href: "/parties" },
-  { label: "POS", icon: "$", href: "/pos" },
-  { label: "Reports", icon: "▥", href: "/reports" },
-  { label: "Company Settings", icon: "⚙", href: "/company-settings" },
-];
 
 function normalizeName(value: string) {
   return value.trim().toLowerCase();
@@ -305,39 +294,10 @@ export default function BookingsPage() {
   }
 
   return (
-    <main className="h-screen overflow-hidden bg-[#E7E3DA] p-5 text-[#202633] antialiased">
-      <div className="flex h-full overflow-hidden rounded-[18px] bg-[#F6F0E6] shadow-sm">
-        <aside className="relative h-full w-[260px] shrink-0 border-r border-black/10 bg-[#F2EFE8] px-6 py-7">
-          <div className="mb-9">
-            <div className="mb-2 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#1E293B] text-sm font-semibold text-white">PF</div>
-              <div>
-                <h1 className="text-lg font-semibold tracking-[-0.03em]">PlayFlow</h1>
-                <p className="text-xs text-[#6B7280]"><BusinessName/></p>
-              </div>
-            </div>
-          </div>
+    <>
 
-          <nav className="space-y-1">
-            {navItems.map((item) => {
-              const isActive = item.href === "/bookings";
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`flex w-full items-center gap-4 rounded-[8px] px-4 py-3 text-left text-sm font-semibold transition ${
-                    isActive ? "bg-white text-[#111827] shadow-sm" : "text-[#5B6270] hover:bg-white/70 hover:text-[#111827]"
-                  }`}
-                >
-                  <span className="flex h-5 w-5 items-center justify-center text-base">{item.icon}</span>
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-        </aside>
 
-        <section className="h-full flex-1 overflow-hidden px-6 py-6">
+        <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4 sm:p-6">
           <header className="mb-5 flex items-start justify-between gap-5">
             <div>
               <p className="text-sm font-semibold text-[#8A6D3B]">Manual Booking</p>
@@ -349,7 +309,7 @@ export default function BookingsPage() {
             </div>
           </header>
 
-          <div className="grid h-[calc(100vh-125px)] grid-cols-[1fr_350px] gap-3">
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_350px] gap-3">
             <section className="overflow-y-auto rounded-[12px] border border-black/10 bg-white p-5 shadow-sm">
               <div className="mb-5 rounded-[12px] bg-[#F6F0E6] p-4">
                 <div className="mb-3 flex items-center justify-between">
@@ -547,7 +507,7 @@ export default function BookingsPage() {
             </aside>
           </div>
         </section>
-      </div>
+
 
       {error && <div role="alert" className="fixed bottom-5 left-1/2 z-50 max-w-xl -translate-x-1/2 rounded-xl border border-red-200 bg-white p-4 text-red-700 shadow-lg">{error}<button className="ml-4 underline" onClick={() => setError("")}>Dismiss</button></div>}
 
@@ -613,6 +573,6 @@ export default function BookingsPage() {
         </div>
       )}
       {checkoutOpen&&savedEventId&&<PartyCheckout eventId={savedEventId} initialPurpose="DEPOSIT" onClose={()=>setCheckoutOpen(false)} onChanged={()=>{}}/>}
-    </main>
+    </>
   );
 }
