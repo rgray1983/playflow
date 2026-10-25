@@ -3,7 +3,7 @@ import { AccessError, requireStaff } from "@/lib/auth/staff";
 
 export async function proxy(request: NextRequest) {
   try {
-    await requireStaff();
+    await requireStaff(request.nextUrl.pathname==="/families"||request.nextUrl.pathname.startsWith("/families/")?"families.read":"read");
     return NextResponse.next();
   } catch (error) {
     const path = error instanceof AccessError
@@ -15,5 +15,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/bookings/:path*", "/calendar/:path*", "/check-in/:path*", "/company-settings/:path*", "/parties/:path*", "/pos/:path*", "/reports/:path*"],
+  matcher: ["/", "/families/:path*", "/bookings/:path*", "/calendar/:path*", "/check-in/:path*", "/company-settings/:path*", "/parties/:path*", "/pos/:path*", "/reports/:path*"],
 };

@@ -3,13 +3,14 @@
 import Link from "next/link";
 import {usePathname} from "next/navigation";
 import {useId, useRef, useState, type ReactNode} from "react";
-import {BusinessName} from "./StaffIdentity";
+import {BusinessName,useStaffIdentity} from "./StaffIdentity";
 import StaffName from "./StaffName";
 import SignOutButton from "./SignOutButton";
 import {isNavigationActive, isStaffPage, staffNavigation} from "@/lib/navigation/staff";
 
 export default function StaffAppShell({children}: {children: ReactNode}) {
   const pathname = usePathname();
+  const identity=useStaffIdentity();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuId = useId();
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -17,7 +18,7 @@ export default function StaffAppShell({children}: {children: ReactNode}) {
   if (!isStaffPage(pathname)) return children;
 
   function navigation(onNavigate?: () => void) {
-    return staffNavigation.map(item => {
+    return staffNavigation.filter(item=>!("permission" in item)||identity?.staff.permissions.includes(item.permission)).map(item => {
       const active = isNavigationActive(pathname, item.href);
       return <Link key={item.href} href={item.href} onClick={onNavigate}
         aria-current={active ? "page" : undefined}

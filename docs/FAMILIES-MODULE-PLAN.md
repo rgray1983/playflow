@@ -1,6 +1,6 @@
-# Families module — proposed implementation plan
+# Families module — implementation plan
 
-Prepared October 25, 2026. Planning only; implementation has not started. The owner requested a reviewable plan before beginning work.
+Prepared October 25, 2026. The owner approved stages 1 and 2, now implemented: staff directory/profile editing and shared quick edits in Check-In, Bookings (including the wizard), and POS. Later stages remain planned.
 
 ## Purpose and boundaries
 
@@ -11,7 +11,7 @@ Families is a core dependency, not an optional business switch. Permissions cont
 ## Current foundation verified in the repository
 
 - Family, Parent and Child are existing tenant-scoped models. Family has ACTIVE/INACTIVE/ARCHIVED status; Child has an active flag. Parents can have individual portal identities and multiple adults can belong to one family.
-- Parent Portal already supports editing a parent's own profile, adding/editing children, and guarded child archive/restore. Staff can intake families/children and select records for check-in and booking; there is no complete staff family editor.
+- Parent Portal already supports editing a parent's own profile, adding/editing children, and guarded child archive/restore. Staff can intake families/children and select records for check-in and booking; the Families module now adds a staff family editor.
 - Existing profile validators reject invalid dates/phones and stale versions. Child identity corrections mark liability coverage as needing a new signature without rewriting signed wording or historical snapshots.
 - Family-access tools already issue time-limited, single-use links to an existing parent with a matching verified account email. Email matching alone does not grant family access.
 - Visits, memberships, parties, signatures, payment records and checkout attempts reference family members. Some database relationships cascade deletion, some retain nullable references, and others restrict deletion. A raw family-row deletion is not a finished erasure workflow.
@@ -116,3 +116,16 @@ Verification covers tenant/family ownership, staff and parent permissions, stale
 ## Recommended starting scope
 
 Start with Phase 1, then Phase 2. This delivers the immediate need to help a parent at the counter while leaving shared-adult ownership and permanent erasure for a deliberate decision. Phases 3–5 remain planned follow-up work, not features represented as implemented.
+
+## Stages 1 and 2 delivery — October 25, 2026
+
+- Shared left-navigation directory, paginated family/adult/child/email/phone search, status filters, staff family detail, add family and add child. Existing inactive families are read-only.
+- Shared contact, child and family metadata editors. Owner/Manager can edit internal notes; Front Desk can edit ordinary profile details; Party Host has no general Families access. Every API uses the authenticated business scope.
+- Edit family dialogs in Check-In, staff Bookings (including the booking wizard) and POS. Refreshing an edit retains the workflow's selected children, booking choices or current basket.
+- Version checks reject stale writes; staff request IDs replay safely. Profile/coverage updates and minimal field-name audit entries commit together. Parent profile/child edits also record their actor.
+- Contact email changes preserve authentication IDs and invalidate unused claim links. Child identity corrections invalidate current liability coverage and flag upcoming guests without rewriting saved signature snapshots.
+- Additive FamilyChange migration applied on the existing development database branch; no additional branch created.
+
+Validation: 330 automated tests pass, including staff permissions, business/family scope, protected field rejection, contact-email/auth preservation, stale edit/replay handling, waiver corrections, safe parameterized search and bounded detail responses. TypeScript, changed-source lint and production build pass. Signed-in browser/tablet acceptance still requires the owner session; deployment protection prevents automated browser verification.
+
+Owner acceptance: open Families, search by an adult/child/phone, correct contact details, and verify the same correction through Edit family in Check-In, Bookings and POS without losing the in-progress selection/cart. Confirm a child identity correction displays the new-waiver message and a corresponding recent change. Whole-family archive/delete, access assistance and full history tabs remain later stages.

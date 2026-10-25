@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import FamilySearch from "@/components/families/FamilySearch";
+import {FamilyQuickEdit} from "@/components/families/FamilyDetails";
 import SigningDialog from "@/components/forms/SigningDialog";
 import PendingSquarePayments from "./PendingSquarePayments";
 import SquareCardPayment from "./SquareCardPayment";
@@ -14,7 +16,7 @@ import ReceiptView from "./ReceiptView";
 import {addCheckoutSale,checkoutSummary} from "@/lib/counter/basket";
 import { registerKey } from "@/lib/counter/register-input";
 import { dollars, paidCents, type CounterReceipt } from "@/lib/counter/receipt";
-import type { DeskFamily, DeskSearchResult } from "@/components/check-in/types";
+import type { DeskFamily } from "@/components/check-in/types";
 
 type Overview = {
   sales: CounterReceipt[]; hasMore: boolean;
@@ -46,7 +48,7 @@ export default function Register({initialFamilyId, initialSaleId, onChanged, onB
   const hasDraft=draft.products.length+draft.custom.length>0;
   const [category, setCategory] = useState(initialSaleId?"Snacks & Retail":"Open sales");
   const [familyOpen, setFamilyOpen] = useState(false), [historyOpen, setHistoryOpen] = useState(false);
-  const [query, setQuery] = useState(""), [results, setResults] = useState<DeskSearchResult[]>([]), [searching, setSearching] = useState(false);
+  const [familyEditorOpen,setFamilyEditorOpen]=useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [amount, setAmount] = useState(""), [method, setMethod] = useState("cash"), [notes, setNotes] = useState("");
   const [confirming, setConfirming] = useState(false), [collected, setCollected] = useState(false);
@@ -83,16 +85,7 @@ export default function Register({initialFamilyId, initialSaleId, onChanged, onB
     if(!draftQuote)return;setBusy(true);setError("");if(!draftRequest.current)draftRequest.current=crypto.randomUUID();
     try{const result=await post({action:"create-cart",familyId:family.id,...draft,quoteHash:draftQuote.quoteHash,requestId:draftRequest.current});const created=result.receipt as CounterReceipt;const previousAmount=amount;const next=addCheckoutSale(cart,created);setDraft({products:[],custom:[]});setDraftQuote(null);setQuoteLoading(false);draftRequest.current="";updateCart(next);editAmount(previousAmount);if(created.status==="PAID"&&!next.length){setReceipt(created);setNotice("Zero-total sale saved. No payment collected.");}else{setCollected(false);if(channel==="square")setSquareOpen(true);else setConfirming(true);}await load(family.id);}catch(e){setError(e instanceof Error?e.message:"Unable to save checkout.");}finally{setBusy(false);}
   }
-  useEffect(() => {
-    if (!familyOpen || query.trim().length < 2) return;
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      fetch(`/api/check-in?q=${encodeURIComponent(query.trim())}`, { signal: controller.signal, cache: "no-store" }).then(async r => {
-        const result = await r.json(); if (!r.ok) throw new Error(result.error || "Search failed."); return result.families;
-      }).then(result => { setResults(result); setSearching(false); }).catch(e => { if (!controller.signal.aborted) { setError(e.message); setSearching(false); } });
-    }, 250);
-    return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [query, familyOpen]);
+
 
   async function load(id: string) {
     const [familyResponse, salesResponse] = await Promise.all([
@@ -168,6 +161,7 @@ export default function Register({initialFamilyId, initialSaleId, onChanged, onB
     <div className="register-toolbar flex flex-wrap items-center justify-between gap-2">
       <div className="flex flex-wrap gap-2">
         <button disabled={busy} onClick={() => { setError(""); setFamilyOpen(true); }} className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold">{family ? family.name : "Select customer / family"} <span aria-hidden="true">⌄</span></button>
+        <button disabled={busy||!family} onClick={()=>setFamilyEditorOpen(true)} className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold disabled:opacity-40">Edit family</button>
         <button disabled={busy || !family} onClick={() => { setError(""); setHistoryOpen(true); }} className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold disabled:opacity-40">Family history & memberships</button>
       </div>
       <div className="flex flex-wrap gap-2"><button disabled={busy} onClick={()=>{setCustomName("Custom Charge");setCustomAmount("");setCustomProfile("services");setCustomOpen(true);}} className="rounded-xl bg-[#1E293B] px-4 py-3 text-sm font-semibold text-white">+ Custom Charge</button><Link href="/check-in" className="rounded-xl bg-white px-4 py-3 text-sm font-semibold">+ Admission / check-in</Link></div>
@@ -212,7 +206,8 @@ export default function Register({initialFamilyId, initialSaleId, onChanged, onB
     {squareOpen&&family&&sale&&<SquareCardPayment payload={{kind:"counter",familyId:family.id,bills:cart.map(s=>({id:s.id,dueCents:s.totalCents-paidCents(s)})),amountCents}} onClose={()=>{setSquareOpen(false);refresh().catch(e=>setError(e.message));}} onPaid={()=>{setNotice("Square payment completed. View receipts in family history.");onChanged?.();}}/>}
     {manageOpen&&<ProductManager products={products} onClose={()=>setManageOpen(false)} onSaved={loadCatalog}/>}
     {customOpen&&<SigningDialog title="Add Custom Charge" busy={false} onClose={()=>setCustomOpen(false)}><form className="space-y-4" onSubmit={e=>{e.preventDefault();if(!/^\d{1,7}(\.\d{1,2})?$/.test(customAmount)||Number(customAmount)<=0||Number(customAmount)>1000000){setError("Enter a positive custom amount with up to two decimals.");return;}changeDraft({...draft,custom:[...draft.custom,{id:crypto.randomUUID(),name:customName.trim()||"Custom Charge",quantity:1,amountCents:Math.round(Number(customAmount)*100),profile:customProfile}]});setCustomOpen(false);}}><label className="block text-sm font-semibold">Description<input required maxLength={100} value={customName} onChange={e=>setCustomName(e.target.value)} className="mt-2 block w-full rounded-xl border p-3"/></label><label className="block text-sm font-semibold">Tax category<select value={customProfile} onChange={e=>setCustomProfile(e.target.value)} className="mt-2 block w-full rounded-xl border p-3"><option value="services">Services</option><option value="retail">Retail</option><option value="admissions">Admissions</option></select></label><label className="block text-sm font-semibold">Amount (USD)<input required inputMode="decimal" value={customAmount} onChange={e=>{if(/^\d{0,7}(\.\d{0,2})?$/.test(e.target.value))setCustomAmount(e.target.value);}} className="mt-2 block w-full rounded-xl border bg-[#F6F0E6] p-4 text-right text-3xl"/></label><div className="grid grid-cols-5 gap-2">{[5,10,20,50,100].map(n=><button type="button" key={n} onClick={()=>setCustomAmount(String(n))} className="rounded-lg bg-[#F6F0E6] py-3 text-sm font-semibold">${n}</button>)}</div><div className="grid grid-cols-3 gap-2">{["1","2","3","4","5","6","7","8","9",".","0","Backspace"].map(key=><button type="button" key={key} aria-label={key==="Backspace"?"Delete last custom amount digit":key} onClick={()=>setCustomAmount(registerKey(customAmount,key))} className="rounded-xl bg-[#1E293B] py-4 text-xl font-semibold text-white">{key==="Backspace"?"⌫":key}</button>)}</div><button disabled={!customName.trim()||!/^\d+(\.\d{1,2})?$/.test(customAmount)||Number(customAmount)<=0||Number(customAmount)>1000000} className="w-full rounded-xl bg-[#20B8A8] py-4 font-semibold text-white disabled:opacity-40">Add To Cart</button></form></SigningDialog>}
-    {familyOpen && <SigningDialog title="Select customer / family" busy={busy} onClose={() => setFamilyOpen(false)}><div className="space-y-4">{error && <p role="alert" className="text-red-700">{error}</p>}<label className="block text-sm font-semibold">Name, email, or last four phone digits<input autoFocus value={query} maxLength={254} onChange={e => { setQuery(e.target.value); setResults([]); setSearching(e.target.value.trim().length >= 2); }} className="mt-2 w-full rounded-xl border p-3"/></label>{searching && <p>Searching…</p>}{!searching && query.trim().length >= 2 && !results.length && <p>No active families found.</p>}{results.map(f => <button key={f.id} disabled={busy} onClick={() => choose(f.id)} className="block w-full rounded-xl border p-4 text-left"><strong>{f.name}</strong>{f.parents.map((p, i) => <span key={i} className="mt-1 block text-sm text-gray-500">{p.firstName} {p.lastName} · {p.phone}</span>)}</button>)}</div></SigningDialog>}
+    {familyOpen&&<SigningDialog title="Select customer / family" busy={busy} onClose={()=>setFamilyOpen(false)}><FamilySearch disabled={busy} onSelect={choose}/></SigningDialog>}
+    {familyEditorOpen&&family&&<FamilyQuickEdit familyId={family.id} onClose={()=>setFamilyEditorOpen(false)} onSaved={async()=>{await load(family.id);onChanged?.();}}/>}
     {historyOpen && family && <SigningDialog title={`${family.name} · History & memberships`} busy={false} onClose={() => { setHistoryOpen(false); refresh().catch(e => setError(e.message)); }}><CounterPanel key={family.id} family={family} refreshKey={0} initiallyOpen onChanged={async () => { await refresh(); }}/></SigningDialog>}
     {confirming && sale && <SigningDialog title="Confirm payment" busy={busy} onClose={() => setConfirming(false)}><form className="space-y-5" onSubmit={e => { e.preventDefault(); pay(); }}><p className="text-3xl font-semibold">{dollars(amountCents)} · {data?.paymentMethods.find(m => m.key === method)?.label}</p><p className="text-sm">{family?.name} · Remaining after this payment: {dollars(due - amountCents)}</p>{error && <p role="alert" className="text-red-700">{error}</p>}<label className="block text-sm font-semibold">Receipt reference / notes (no card details)<textarea maxLength={2000} value={notes} disabled={busy} onChange={e => { setNotes(e.target.value); paymentId.current = ""; setCollected(false); }} className="mt-2 w-full rounded-xl border p-3"/></label><label className="flex items-start gap-3 text-sm"><input required type="checkbox" checked={collected} disabled={busy} onChange={e => setCollected(e.target.checked)}/><span>I confirm this money has already been collected {method === "card" ? "on the external terminal" : "from the customer"}. This records the payment.</span></label><button disabled={busy || !collected} className="w-full rounded-xl bg-[#20B8A8] p-4 font-semibold text-white disabled:opacity-40">{busy ? "Saving…" : "Confirm payment"}</button></form></SigningDialog>}
     {receipt && <SigningDialog title="Payment receipt" busy={false} onClose={() => setReceipt(null)}><ReceiptView sale={receipt}/></SigningDialog>}

@@ -1,5 +1,6 @@
 export const staffNavigation = [
   {label: "Dashboard", href: "/", icon: "▣"},
+  {label: "Families", href: "/families", icon: "♧", permission: "families.read"},
   {label: "Check-In", href: "/check-in", icon: "✓"},
   {label: "Calendar", href: "/calendar", icon: "◷"},
   {label: "Bookings", href: "/bookings", icon: "✎"},

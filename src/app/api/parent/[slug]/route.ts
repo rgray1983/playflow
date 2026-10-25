@@ -1,3 +1,4 @@
+import {auditParentEdit} from "@/lib/families/changes";
 import {confirmReadyBooking} from "@/lib/booking/confirmation";
 import {tenantForms} from "@/lib/operations/settings";
 import {childFields,profileFields,updateFamilyRecord} from "@/lib/parent/profile";
@@ -50,7 +51,7 @@ async function handlePOST(request: Request, context: Params) {
       return {saved:true};
     }
     if(!parent)throw new FormError("Set up your family first.",403);
-    if(["profile","child-update","child-archive","child-restore"].includes(body.action))return updateFamilyRecord(tx,tenant.id,parent,body);
+    if(["profile","child-update","child-archive","child-restore"].includes(body.action)){const before=body.action==="profile"?parent:await tx.child.findFirst({where:{id:body.childId,tenantId:tenant.id,familyId:parent.familyId}});const previous={...before};const result=await updateFamilyRecord(tx,tenant.id,parent,body);await auditParentEdit(tx,tenant.id,parent,body,result,previous);return result;}
     if(body.action === "party-links") {
       const partyId=clean(body.partyId,"booking ID");
       const party=await tx.party.findFirst({where:{id:partyId,tenantId:tenant.id,familyId:parent.familyId,primaryParentId:parent.id}});

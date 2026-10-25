@@ -105,6 +105,7 @@ model Tenant {
   slug      String   @unique
   ownerAuthUserId String? @unique
   timezone  String   @default("America/New_York")
+  familyChanges FamilyChange[]
   bookingSettings Json?
   operationalSettings Json?
   waiverValidityDays Int?
@@ -174,6 +175,7 @@ model CommerceSettings {
 }
 
 model Family {
+  changes FamilyChange[]
   counterSales CounterSale[]
   intakeRequestId String?
   intakeRequestHash String?
@@ -921,4 +923,24 @@ model PaymentRefund {
  updatedAt DateTime @updatedAt
  @@unique([tenantId,requestId])
  @@index([tenantId,createdAt])
+}
+
+model FamilyChange {
+ id String @id @default(cuid())
+ tenantId String
+ tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
+ familyId String
+ family Family @relation(fields:[familyId],references:[id],onDelete:Restrict)
+ memberId String?
+ actorKind String
+ actorId String
+ actorName String
+ action String
+ changedFields String[]
+ requestId String
+ requestHash String
+ needsNewWaiver Boolean @default(false)
+ createdAt DateTime @default(now())
+ @@unique([tenantId,requestId])
+ @@index([tenantId,familyId,createdAt])
 }
