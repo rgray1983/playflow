@@ -14,6 +14,8 @@ learn from real-world use.
 
 Owner direction: finish the operating app and dashboard first. Guided owner onboarding and PlayFlow subscription billing follow afterward.
 
+Proposed next module: **Families**. See `docs/FAMILIES-MODULE-PLAN.md`. Begin with staff directory/profile editing and reusable quick edits after owner review; archive/restore and portal assistance follow, and permanent deletion awaits explicit shared-adult/data-lifecycle decisions. This is a plan, not an implemented family-management feature.
+
 > Shared parent/staff booking now includes the required hosting-parent rental agreement before deposit checkout. See `docs/reviews/2026-10-24-shared-booking.md` for implementation and acceptance checks.
 
 1. Party checkout: deposits, balances, extras and iPad Square Reader. Shared checkout, confirmation gates and Reader handoff are implemented; physical Live reader acceptance remains blocked on platform Live setup and callback registration.
