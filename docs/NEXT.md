@@ -14,6 +14,8 @@ learn from real-world use.
 
 Owner direction: finish the operating app and dashboard first. Guided owner onboarding and PlayFlow subscription billing follow afterward.
 
+> Shared parent/staff booking now includes the required hosting-parent rental agreement before deposit checkout. See `docs/reviews/2026-10-24-shared-booking.md` for implementation and acceptance checks.
+
 1. Party checkout: deposits, balances, extras and iPad Square Reader. Shared checkout, confirmation gates and Reader handoff are implemented; physical Live reader acceptance remains blocked on platform Live setup and callback registration.
 2. Booking communications: durable hold/confirmation/reminder previews and delivery queue implemented. Connect a verified PlayFlow email sender, enable delivery deliberately, configure the reminder processor, and verify delivery with owner-controlled test addresses.
 3. Forms and settings: tenant-owned published waivers/rental agreements and enforced new-activity module switches implemented. Run second-business owner/parent/staff acceptance and review approved wording before rollout.

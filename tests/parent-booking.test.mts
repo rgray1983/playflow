@@ -90,3 +90,5 @@ test("agreement acknowledgments and unique add-ons are mandatory before any rese
  assert.equal((await POST(request({...input,addOnIds:["addon","addon"]}),ctx)).status,400);
  assert.equal(parties.length,0);assert.equal(documents.length,0);
 });
+
+test("parent availability cannot use the staff deposit-waiver query option",async()=>{const r=await GET(request(undefined,"?eventTypeId=type&packageId=package&date=2030-01-12&waived=true"),ctx);assert.equal(r.status,200);assert.equal((await r.json()).quote.depositDue,100);assert.equal(parties.length,0);});

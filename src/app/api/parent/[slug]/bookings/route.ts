@@ -4,9 +4,10 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getParentContext, withParent } from "@/lib/parent/access";
-import { bookingOptions } from "@/lib/booking/service";
-import { BookingError, scheduleFrom } from "@/lib/booking/rules";
-import { createParentBooking, parentQuoteToken } from "@/lib/booking/parent-booking";
+import {bookingCatalog,bookingAvailability} from "@/lib/booking/catalog";
+import {currentBookingResult} from "@/lib/booking/reservation";
+import { BookingError } from "@/lib/booking/rules";
+import { createParentBooking } from "@/lib/booking/parent-booking";
 import { FormError } from "@/lib/waivers/signing";
 
 type Params={params:Promise<{slug:string}>};
@@ -16,18 +17,15 @@ async function handleGET(request: Request, context:Params) {
   if(!parent)throw new FormError("Set up your family before booking.",403);
   if(!tenantForms(tenant)?.rental||!tenantForms(tenant)?.liability)throw new FormError("Parent booking is not configured for this venue.",404);
   const query=new URL(request.url).searchParams;
-  if(query.has("date")){
-    try {
-      const options=await bookingOptions(prisma,tenant,{eventTypeId:query.get("eventTypeId")??"",packageId:query.get("packageId")??"",eventDate:query.get("date")??"",addOnIds:query.getAll("addOnId")});
-      return NextResponse.json({slots:options.slots,quote:options.quote,timezone:tenant.timezone,setupMinutes:scheduleFrom(tenant.bookingSettings).setupMinutes,quoteToken:parentQuoteToken(options,scheduleFrom(tenant.bookingSettings).setupMinutes)});
-    }catch(error){if(error instanceof BookingError)throw new FormError(error.message,error.status);throw error;}
-  }
-  const [eventTypes,packages,addOns]=await Promise.all([
-    prisma.eventType.findMany({where:{tenantId:tenant.id,active:true},orderBy:{name:"asc"},select:{id:true,name:true,description:true}}),
-    prisma.package.findMany({where:{tenantId:tenant.id,active:true},orderBy:{name:"asc"},select:{id:true,eventTypeId:true,name:true,description:true,price:true,durationMinutes:true,guestLimit:true}}),
-    prisma.partyAddOn.findMany({where:{tenantId:tenant.id,active:true},orderBy:{name:"asc"},select:{id:true,name:true,description:true,price:true,durationMinutes:true}}),
-  ]);
-  return NextResponse.json({forms:tenantForms(tenant),eventTypes,packages:packages.map(p=>({...p,price:Number(p.price)})),addOns:addOns.map(a=>({...a,price:Number(a.price)})),setupMinutes:scheduleFrom(tenant.bookingSettings).setupMinutes});
+  try{
+    if(query.has("partyId")){
+      const party=await prisma.party.findFirst({where:{id:query.get("partyId")!,tenantId:tenant.id,familyId:parent.familyId,primaryParentId:parent.id},include:{payments:{where:{status:"PAID",purpose:"DEPOSIT"},select:{amount:true}}}});
+      if(!party)throw new FormError("Booking not found.",404);
+      return NextResponse.json({booking:await currentBookingResult(prisma,party)});
+    }
+    return NextResponse.json(query.has("date")?await bookingAvailability(prisma,tenant,query):await bookingCatalog(prisma,tenant));
+  }catch(error){if(error instanceof BookingError)throw new FormError(error.message,error.status);throw error;}
+
 }
 async function handlePOST(request:Request,context:Params){
   void context;

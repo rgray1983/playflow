@@ -68,6 +68,7 @@ mock.module("../src/lib/auth/staff.ts", {
   namedExports: {
     withStaff: (_permission: string, handler: unknown) => handler,
     getStaffTenant: async () => ({ id: "test-tenant" }),
+    getStaffContext:()=>({tenantId:"test-tenant",employeeId:"staff",name:"Test Staff"}),
   },
 });
 
@@ -114,7 +115,7 @@ test("host token cannot be used as a guest invitation", async () => {
   assert.equal((await getGuest(request, context(hostToken))).status, 404);
 });
 
-test("new bookings generate independent guest and host secrets", async () => {
+test("the retired unsigned booking payload cannot create a reservation or release links", async () => {
   const response = await createEvent(new Request("http://localhost/api/events", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -124,9 +125,6 @@ test("new bookings generate independent guest and host secrets", async () => {
       eventDate: "2026-11-01", startTime: "12:00", balanceDue: 100, phone: "5555550100", bookingRequestId: "test-request-123456789",
     }),
   }));
-  assert.equal(response.status, 200);
-  assert.match(createdTokens.inviteToken ?? "", /^[A-Za-z0-9_-]{24}$/);
-  assert.match(createdTokens.hostToken ?? "", /^[A-Za-z0-9_-]{24}$/);
-  assert.notEqual(createdTokens.hostToken, createdTokens.inviteToken);
-  assert.equal((await response.json()).event.hostToken, createdTokens.hostToken);
+  assert.equal(response.status,400);
+  assert.deepEqual(createdTokens,{});
 });
