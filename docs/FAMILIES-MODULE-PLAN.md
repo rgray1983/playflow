@@ -1,6 +1,6 @@
 # Families module — implementation plan
 
-Prepared October 25, 2026. The owner approved stages 1–4, now implemented: staff directory/profile editing; shared quick edits; full family history and manager portal assistance; guarded whole-family archive/restore. Permanent deletion remains planned.
+Prepared October 25, 2026. The owner approved stages 1–4, now implemented: staff directory/profile editing; shared quick edits; full family history and manager portal assistance; guarded whole-family archive/restore. Owner decision: archiving is sufficient for the current release; permanent deletion is deferred.
 
 ## Purpose and boundaries
 
@@ -89,7 +89,9 @@ Archive removes the family from default new-activity searches and prevents new v
 
 Acceptance: archive/restore is reversible, blockers are accurate, history remains readable, pending payments are not abandoned, and active/archived searches and portal behavior agree.
 
-### Phase 5 — Privacy requests and permanent deletion
+### Phase 5 — Privacy requests and permanent deletion (deferred)
+
+Owner decision, October 26, 2026: reversible archiving is sufficient for now. Do not add permanent deletion to the active build scope. Revisit only for a specific privacy/data-removal need.
 
 Implement after the unresolved policy decisions below are settled. Staff control belongs in Family → Access & management; parent controls belong in Parent Portal → Privacy & account. Distinguish requesting erasure from completed erasure. Do not ship an active Delete family control that only archives records or makes an undefined promise.
 

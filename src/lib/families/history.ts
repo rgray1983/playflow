@@ -25,7 +25,7 @@ export async function staffFamilyHistory(tx:Prisma.TransactionClient,staff:Staff
   records=parties.map(({familyId:hostId,primaryParent,...p})=>({...p,role:hostId===familyId||primaryParent?.familyId===familyId?"Hosting family":"Guest family"}));break;
  }
  case "memberships":{
-  const memberships=await tx.membership.findMany({where:family,...pagination,orderBy:[{startsAt:"desc"},{id:"desc"}],select:{id:true,tenantId:true,familyId:true,childId:true,name:true,status:true,startsAt:true,endsAt:true,autoRenew:true,termsSnapshot:true,membershipPlan:{select:{id:true,tenantId:true,name:true,visitLimit:true}},child:{select:{firstName:true,lastName:true}}}});
+  const memberships=await tx.membership.findMany({where:family,...pagination,orderBy:[{startsAt:"desc"},{id:"desc"}],select:{id:true,tenantId:true,familyId:true,childId:true,name:true,status:true,startsAt:true,endsAt:true,autoRenew:true,visitCreditAdjustment:true,termsSnapshot:true,membershipPlan:{select:{id:true,tenantId:true,name:true,visitLimit:true}},child:{select:{firstName:true,lastName:true}}}});
   records=await Promise.all(memberships.map(async m=>{const use=await membershipUse(tx,m,staff.tenantId,familyId,m.childId??"");return {id:m.id,name:m.name,status:m.status,startsAt:m.startsAt,endsAt:m.endsAt,autoRenew:m.autoRenew,child:m.child,remaining:use.remaining,eligibilityReason:use.reason};}));break;
  }
  case "counter":records=await tx.counterSale.findMany({where:family,...pagination,orderBy:[{createdAt:"desc"},{id:"desc"}],select:receiptSelect});break;

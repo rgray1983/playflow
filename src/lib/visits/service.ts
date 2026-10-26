@@ -1,3 +1,4 @@
+import {membershipBalance} from "@/lib/memberships/balance";
 import {assertModule} from "@/lib/operations/guards";
 import {Prisma} from "@/generated/prisma/client";
 import {FormError,signingHash} from "@/lib/waivers/signing";
@@ -10,20 +11,15 @@ export function visitRequestId(value:unknown){if(typeof value!=="string"||!/^[A-
 export function recordId(value:unknown,label:string){if(typeof value!=="string"||!value||value.length>100)throw new FormError(`Choose ${label}.`);return value;}
 export async function lockVisits(tx:DB,tenantId:string){await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id=${tenantId} FOR UPDATE`);}
 export function validCoverageWhere(tenantId:string,familyId:string,now=new Date()):Prisma.WaiverChildWhereInput{return{status:"VALID",signedAt:{not:null},waiver:{tenantId,familyId,kind:"LIABILITY",status:"VALID",signedAt:{not:null},version:{not:null},OR:[{expiresAt:null},{expiresAt:{gt:now}}]}};}
-export type RecordedMembership={id:string;tenantId:string;familyId:string;childId:string|null;name:string;status:string;startsAt:Date;endsAt:Date|null;termsSnapshot?:unknown;membershipPlan:{id:string;tenantId:string;name:string;visitLimit:number|null}|null};
+export type RecordedMembership={id:string;tenantId:string;familyId:string;childId:string|null;name:string;status:string;startsAt:Date;endsAt:Date|null;termsSnapshot?:unknown;visitCreditAdjustment?:number;membershipPlan:{id:string;tenantId:string;name:string;visitLimit:number|null}|null};
 export async function membershipUse(tx:DB,membership:RecordedMembership,tenantId:string,familyId:string,childId:string,now=new Date()){
   if(membership.tenantId!==tenantId||membership.familyId!==familyId||(membership.childId&&membership.childId!==childId))return {eligible:false,reason:"Not assigned to this child or family.",remaining:null,used:0};
   if(membership.status!=="ACTIVE")return{eligible:false,reason:`Membership is ${membership.status.toLowerCase()}.`,remaining:null,used:0};
   if(membership.startsAt>now||membership.endsAt&&membership.endsAt<=now)return{eligible:false,reason:"Membership is outside its recorded dates.",remaining:null,used:0};
-  const plan=membership.membershipPlan;
-  const terms=membership.termsSnapshot as {version?:number;visitLimit?:number|null}|null|undefined;
-  if(terms?.version!==1&&(!plan||plan.tenantId!==tenantId))return{eligible:false,reason:"The membership plan needs venue review.",remaining:null,used:0};
-  const limit=terms?.version===1?terms.visitLimit:plan!.visitLimit;
-  if(limit===null)return{eligible:true,reason:"Unlimited recorded visits.",remaining:null,used:0};
-  if(typeof limit!=="number"||!Number.isInteger(limit)||limit<0)return{eligible:false,reason:"The membership visit limit needs venue review.",remaining:null,used:0};
-  const used=await tx.visit.count({where:{tenantId,familyId,membershipId:membership.id,status:{not:"CANCELLED"},checkedInAt:{gte:membership.startsAt}}});
-  const remaining=Math.max(0,limit-used);
-  return{eligible:remaining>0,reason:remaining?`${remaining} visits left in the recorded membership term.`:"No visits remaining in this membership term.",remaining,used};
+  const balance=await membershipBalance(tx,membership);
+  if(!balance.valid)return{eligible:false,reason:"The membership visit limit needs venue review.",remaining:null,used:balance.used};
+  if(balance.totalLimit===null)return{eligible:true,reason:"Unlimited recorded visits.",remaining:null,used:balance.used};
+  return{eligible:balance.remaining!>0,reason:balance.remaining?`${balance.remaining} visits left in the recorded membership term.`:"No visits remaining in this membership term.",remaining:balance.remaining,used:balance.used};
 }
 export async function intakeFamily(tx:DB,staff:VisitStaff,input:Record<string,unknown>){
   const requestId=visitRequestId(input.requestId);

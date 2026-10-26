@@ -1,3 +1,4 @@
+import {renewalSource} from "@/lib/memberships/management";
 import {assertModule} from "@/lib/operations/guards";
 import {assertNoPendingPayment,type PaymentExecution} from "@/lib/payments/pending";
 import {productCartQuote} from "./products";
@@ -38,8 +39,10 @@ export async function membershipQuote(tx: DB, staff: VisitStaff, input: Record<s
     if (plan.visitLimit !== null && (!Number.isInteger(plan.visitLimit) || plan.visitLimit <= 0) || plan.durationDays !== null && (!Number.isInteger(plan.durationDays) || plan.durationDays <= 0 || plan.durationDays > 36500))
         throw new FormError("Review this plan’s duration and visit limit in Company Settings.");
     const terms: MemberTerms = { version: 1, visitLimit: plan.visitLimit, durationDays: plan.durationDays, billingInterval: plan.billingInterval, timezone: tenant.timezone };
+    const source=input.renewalOfId?await renewalSource(tx,staff.tenantId,familyId,recordId(input.renewalOfId,"a previous membership"),input.sourceUpdatedAt):null;
+    if(source&&source.childId!==childId)throw new FormError("Renewal must preserve the original child/family coverage.");
     const quote = quoteCounter([{ id: plan.id, label: plan.name, priceCents: cents(plan.price) }], "memberships", await settingsFor(tx, staff.tenantId));
-    return { familyId, childId, plan, terms, quote, quoteHash: signingHash({ familyId, childId, planId: plan.id, updatedAt: plan.updatedAt, terms, quote }) };
+    return { familyId, childId, plan, terms, quote, quoteHash: signingHash({ familyId, childId, planId: plan.id, updatedAt: plan.updatedAt, terms, quote, ...(source?{renewalOfId:source.id,sourceUpdatedAt:source.updatedAt}:{}) }) };
 }
 async function createSale(tx: DB, staff: VisitStaff, data: {
     familyId: string;
@@ -54,7 +57,7 @@ async function createSale(tx: DB, staff: VisitStaff, data: {
 }
 export async function enrollMembership(tx: DB, staff: VisitStaff, input: Record<string, unknown>) {
     const requestId = visitRequestId(input.requestId), familyId = recordId(input.familyId, "a family");
-    const hash = signingHash({ familyId, planId: input.planId, childId: input.childId || null, quoteHash: input.quoteHash });
+    const hash = signingHash({ familyId, planId: input.planId, childId: input.childId || null, quoteHash: input.quoteHash, ...(input.renewalOfId?{renewalOfId:input.renewalOfId}:{}) });
     await lockVisits(tx, staff.tenantId);
     const existing = await tx.counterSale.findFirst({ where: { tenantId: staff.tenantId, requestId } });
     if (existing) {
@@ -67,8 +70,9 @@ export async function enrollMembership(tx: DB, staff: VisitStaff, input: Record<
     if (input.quoteHash !== prepared.quoteHash)
         throw new FormError("The plan or total changed. Review a fresh quote before enrolling.", 409);
     const now = new Date(), active = prepared.quote.totalCents === 0;
-    const membership = await tx.membership.create({ data: { tenantId: staff.tenantId, familyId, childId: prepared.childId, membershipPlanId: prepared.plan.id, name: prepared.plan.name, status: active ? "ACTIVE" : "PENDING", startsAt: now, endsAt: active ? memberEnd(prepared.terms, now) : null, autoRenew: false, termsSnapshot: prepared.terms } });
+    const membership = await tx.membership.create({ data: { tenantId: staff.tenantId, familyId, childId: prepared.childId, membershipPlanId: prepared.plan.id, name: prepared.plan.name, status: active ? "ACTIVE" : "PENDING", startsAt: now, endsAt: active ? memberEnd(prepared.terms, now) : null, autoRenew: false, termsSnapshot: prepared.terms, ...(input.renewalOfId?{renewedFromId:String(input.renewalOfId)}:{}) } });
     const sale = await createSale(tx, staff, { familyId, requestId, requestHash: hash, kind: "MEMBERSHIP", quote: prepared.quote, membershipId: membership.id });
+    if(input.renewalOfId)await tx.membershipChange.create({data:{tenantId:staff.tenantId,membershipId:String(input.renewalOfId),familyId,action:"renew",relatedMembershipId:membership.id,reason:"Staff renewal purchase; new term starts after full payment.",staffId:staff.employeeId,staffName:staff.name,requestId,requestHash:hash}});
     return { saleId: sale.id, replayed: false };
 }
 export async function billAdmissions(tx: DB, staff: VisitStaff, input: Record<string, unknown>) {

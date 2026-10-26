@@ -100,6 +100,7 @@ enum EventPaymentMethod {
 }
 
 model Tenant {
+  membershipChanges MembershipChange[]
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
@@ -402,6 +403,9 @@ model MembershipPlan {
 }
 
 model Membership {
+  visitCreditAdjustment Int @default(0)
+  renewedFromId String? @unique
+  changes MembershipChange[]
   termsSnapshot Json?
   counterSale CounterSale?
   id                   String           @id @default(cuid())
@@ -883,6 +887,9 @@ model ProviderCheckout {
 }
 
 model BookingMessage {
+ senderFrom String?
+ attemptCount Int @default(0)
+ retryAt DateTime?
  id String @id @default(cuid())
  tenantId String
  tenant Tenant @relation(fields:[tenantId],references:[id])
@@ -944,4 +951,24 @@ model FamilyChange {
  createdAt DateTime @default(now())
  @@unique([tenantId,requestId])
  @@index([tenantId,familyId,createdAt])
+}
+
+model MembershipChange {
+ id String @id @default(cuid())
+ tenantId String
+ tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
+ membershipId String
+ membership Membership @relation(fields:[membershipId],references:[id],onDelete:Restrict)
+ familyId String
+ action String
+ relatedMembershipId String?
+ creditDelta Int @default(0)
+ reason String
+ staffId String
+ staffName String
+ requestId String
+ requestHash String
+ createdAt DateTime @default(now())
+ @@unique([tenantId,requestId])
+ @@index([tenantId,membershipId,createdAt])
 }
