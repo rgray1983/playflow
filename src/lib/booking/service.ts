@@ -41,7 +41,8 @@ export async function lockReservation(tx: Database, tenantId: string, partyId: s
   await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id = ${tenantId} FOR UPDATE`);
   return tx.party.findUniqueOrThrow({ where: { id: partyId, tenantId } });
 }
-export async function assertReservation(tx: Database, party: { id: string; tenantId: string; setupStartsAt?: Date | null; startTime: Date; endTime: Date; confirmationExpiresAt: Date | null; confirmedAt: Date | null }) {
+export async function assertReservation(tx: Database, party: { id: string; tenantId: string; setupStartsAt?: Date | null; startTime: Date; endTime: Date; confirmationExpiresAt: Date | null; confirmedAt: Date | null; familyId?: string | null }) {
+  if(party.familyId&&!await tx.family.findFirst({where:{id:party.familyId,tenantId:party.tenantId,status:"ACTIVE"},select:{id:true}}))throw new BookingError("Restore the hosting family before starting or restoring this booking.",409);
   if (!party.confirmedAt && party.confirmationExpiresAt && party.confirmationExpiresAt.getTime() <= Date.now()) throw new BookingError("This pending hold has expired. Create a new booking.", 410);
   const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: party.tenantId } });
   const buffer = scheduleFrom(tenant.bookingSettings).bufferMinutes * 60000;

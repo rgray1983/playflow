@@ -1,6 +1,6 @@
 # Families module — implementation plan
 
-Prepared October 25, 2026. The owner approved stages 1 and 2, now implemented: staff directory/profile editing and shared quick edits in Check-In, Bookings (including the wizard), and POS. Later stages remain planned.
+Prepared October 25, 2026. The owner approved stages 1–4, now implemented: staff directory/profile editing; shared quick edits; full family history and manager portal assistance; guarded whole-family archive/restore. Permanent deletion remains planned.
 
 ## Purpose and boundaries
 
@@ -48,7 +48,7 @@ Keep primary edits visible. Put infrequent or destructive actions under Manage f
 
 ## Proposed default permissions
 
-These are proposed defaults for implementation, not a description of permissions already shipped.
+These defaults are implemented for stages 1–4. Permanent deletion remains a later policy-controlled workflow.
 
 | Action | Owner / manager | Front desk | Party host | Parent account |
 |---|---|---|---|---|
@@ -115,7 +115,7 @@ Verification covers tenant/family ownership, staff and parent permissions, stale
 
 ## Recommended starting scope
 
-Start with Phase 1, then Phase 2. This delivers the immediate need to help a parent at the counter while leaving shared-adult ownership and permanent erasure for a deliberate decision. Phases 3–5 remain planned follow-up work, not features represented as implemented.
+Start with Phase 1, then Phase 2. This delivers the immediate need to help a parent at the counter while leaving shared-adult ownership and permanent erasure for a deliberate decision. Phases 3–4 are now implemented as described below. Phase 5 remains planned follow-up work.
 
 ## Stages 1 and 2 delivery — October 25, 2026
 
@@ -129,3 +129,17 @@ Start with Phase 1, then Phase 2. This delivers the immediate need to help a par
 Validation: 330 automated tests pass, including staff permissions, business/family scope, protected field rejection, contact-email/auth preservation, stale edit/replay handling, waiver corrections, safe parameterized search and bounded detail responses. TypeScript, changed-source lint and production build pass. Signed-in browser/tablet acceptance still requires the owner session; deployment protection prevents automated browser verification.
 
 Owner acceptance: open Families, search by an adult/child/phone, correct contact details, and verify the same correction through Edit family in Check-In, Bookings and POS without losing the in-progress selection/cart. Confirm a child identity correction displays the new-waiver message and a corresponding recent change. Whole-family archive/delete, access assistance and full history tabs remain later stages.
+
+## Stages 3 and 4 delivery — October 25, 2026
+
+- Family history and saved forms reuse the parent history/document components with a staff-only scoped history endpoint. Sections include original signed forms/printable copies, visits, hosted bookings/guest attendance, memberships, receipts, party payments, Square checkout/refund status and archived children. Financial sections require existing payment permission. History remains readable when the family is archived.
+- Access & management is restricted to Owner/Manager. Add guardian requires confirmation of the adult's authority, validated contact data and a fresh family version; it creates an unconnected adult, never an authentication identity. Existing business email matches require review instead of silently merging or transferring a family.
+- Portal access links require confirmation of the intended adult and exact current contact email. Only the hash is stored; links expire after 30 minutes and are claimed through the existing verified-email, single-use flow. Replacement invalidates the previous link; raw tokens never enter the audit feed. Connected accounts cannot be reassigned. No access email is sent automatically. Company Settings links to these family controls; the old unconfirmed link-issuance POST is retired with a 410 guidance response.
+- Archive/restore previews current status and blockers, requires the exact family display name and a manager reason, checks a fresh version, and rechecks blockers under the shared business lock when saving. The audit stores actor/time/action and manager-visible reason atomically. New status changes are idempotent; conflicting/stale requests are rejected.
+- Blockers cover open-play and party check-ins, future hosted/guest parties, live/pending/paused memberships, unpaid counter bills, unbilled admissions (including unknown legacy amounts), party balances/deposits, unresolved legacy payment rows, and pending/review Square payments/refunds. Resolved records, expired holds, declined future guests and unrelated businesses/families do not block. Old Square target keys are checked as well as canonical payloads.
+- Archive preserves family/member IDs, children statuses, auth IDs, signatures, attendance and financial records. It removes active search eligibility, pauses linked parent portal access and revokes unused claim links. Restore reactivates the same family/auth links without restoring individually archived children or reviving expired claim links. Existing new-visit/booking/enrollment guards remain; party restoration, workflow start, guest check-in and public RSVP now also respect archived hosting/guest families under the business lock. Financial review/refund paths remain independent of active-family lookup.
+- Additive nullable FamilyChange.reason migration applied on the original development branch. No customer family was archived or restored by the agent.
+
+Validation: 345 automated tests pass; TypeScript, changed-source ESLint, production build and diff checks pass. New tests cover every blocker category, manager permissions, explicit confirmations, guardian email duplication, contact/auth separation, token hashing/replacement, stale edits, replay/concurrency, route transaction rollback, archive/restore identity preservation, scoped bounded history, archived parent denial/restored access, and old invite/check-in/booking guards. Three read-only Postgres fixture scenarios verify the actual archive SQL against real schema types (all blockers; resolved/foreign records; legacy/review cases). Reproduce the SQL with `node --import tsx scripts/family-archive-sql-fixtures.mts`; the generated queries use CTEs and do not write records.
+
+Signed-in desktop/tablet acceptance remains the owner check because the preview is protected. See `docs/reviews/2026-10-25-families-management.md`. This delivery does not add permanent erasure, automated access email delivery, membership/subscription cancellation, or financial reversal tools. Live memberships and unresolved money remain blockers until resolved through supported operations; archive never bypasses them.

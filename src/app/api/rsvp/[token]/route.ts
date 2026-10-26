@@ -88,6 +88,7 @@ export async function POST(request: Request, { params }: Params) {
       await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id = ${found.tenantId} FOR UPDATE`);
       const party=await tx.party.findUniqueOrThrow({where:{id:found.id}});
       if(["CANCELLED","COMPLETED"].includes(party.status)||(party.status==="PENDING"&&party.confirmationExpiresAt&&party.confirmationExpiresAt.getTime()<=Date.now()))throw new FormError("This party is no longer accepting RSVPs.",410);
+      if(party.familyId&&!await tx.family.findFirst({where:{id:party.familyId,tenantId:party.tenantId,status:"ACTIVE"},select:{id:true}}))throw new FormError("This party is no longer accepting RSVPs. Contact the venue.",410);
       const tenant=await tx.tenant.findUniqueOrThrow({where:{id:party.tenantId}});
       const form=tenantForms(tenant)?.liability;
       if(body.response==="attending"&&!form)throw new FormError("The venue has not configured its waiver.");

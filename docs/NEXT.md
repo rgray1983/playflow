@@ -14,7 +14,7 @@ learn from real-world use.
 
 Owner direction: finish the operating app and dashboard first. Guided owner onboarding and PlayFlow subscription billing follow afterward.
 
-**Families stages 1 and 2 are implemented:** staff directory/profile editing and shared quick edits in Check-In, Bookings and POS. See `docs/FAMILIES-MODULE-PLAN.md` for delivery and acceptance checks. Next: owner workflow acceptance, then history/access assistance and guarded archive/restore. Permanent deletion awaits explicit shared-adult/data-lifecycle decisions.
+**Families stages 1–4 are implemented:** staff directory/editing, shared workflow edits, full scoped history and manager portal assistance, plus guarded archive/restore. See `docs/FAMILIES-MODULE-PLAN.md` and `docs/reviews/2026-10-25-families-management.md`. Next: signed-in workflow/tablet acceptance and membership lifecycle operations. Permanent deletion awaits explicit shared-adult/data-lifecycle decisions.
 
 > Shared parent/staff booking now includes the required hosting-parent rental agreement before deposit checkout. See `docs/reviews/2026-10-24-shared-booking.md` for implementation and acceptance checks.
 

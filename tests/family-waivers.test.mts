@@ -108,3 +108,8 @@ test("replacement parent signatures attach new child coverage only to upcoming e
  const response=await POST(request({action:"waiver",childIds:["child"],signing:signing()}),context);assert.equal(response.status,200);
  const link=relinkedGuest as Record<string,any>|null;assert.ok(link);assert.equal(link.where.tenantId,"tenant");assert.equal(link.where.childId,"child");assert.equal(link.where.status,"EXPECTED");assert.equal(link.where.rsvpStatus.not,"DECLINED");assert.ok(link.where.party.endTime.gt instanceof Date);assert.equal(link.data.waiverChildId,"coverage-0");assert.equal(link.data.waiverStatus,"SIGNED");
 });
+
+test("archived family access is paused for linked parents and restores with the same identity",async()=>{
+ const originalId=ownParent!.id;ownParent!.family={status:"ARCHIVED"};assert.equal((await GET(request(),context)).status,403);assert.equal((await POST(request({action:"child",firstName:"New",lastName:"Child"}),context)).status,403);assert.equal(created,0);
+ ownParent!.family={status:"ACTIVE"};assert.equal((await GET(request(),context)).status,200);assert.equal(ownParent!.id,originalId);
+});

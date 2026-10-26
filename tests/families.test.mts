@@ -64,7 +64,7 @@ test('directory search validates paging and binds escaped names and normalized p
 });
 test('family read excludes manager notes and authentication IDs while exposing linked-account status',async()=>{
  let query:any;const db:any={family:{findFirst:async(q:any)=>{query=q;return{id:'family',parents:[{id:'parent',authUserId:'secret'}],children:[],_count:{parents:1,children:0}};}}};
- const result=await readFamily(db,'tenant','family',false);assert.equal(query.where.tenantId,'tenant');assert.equal(query.select.notes,undefined);assert.equal(query.select.parents.take,50);assert.equal(query.select.children.take,100);assert.equal(result.parents[0].authUserId,undefined);assert.equal(result.parents[0].linked,true);
+ const result=await readFamily(db,'tenant','family',false);assert.equal(query.where.tenantId,'tenant');assert.equal(query.select.notes,undefined);assert.equal(query.select.parents.take,50);assert.equal(query.select.children.take,100);assert.equal('authUserId' in result.parents[0],false);assert.equal(result.parents[0].linked,true);
  await readFamily(db,'tenant','family',true);assert.equal(query.select.notes,true);
  db.family.findFirst=async()=>null;await rejected(readFamily(db,'tenant','foreign',false),404);
 });

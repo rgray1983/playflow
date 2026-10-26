@@ -78,3 +78,9 @@ test("setup reserves the 30 minutes before the party without shortening the even
  const noon=result.slots.find(slot=>slot.time==="12:00")!;
  assert.equal(noon.setupStartsAt.toISOString(),"2027-01-10T16:30:00.000Z");assert.equal(noon.endTime.toISOString(),"2027-01-10T19:00:00.000Z");assert.equal(noon.available,false);
 });
+
+test("cancelled bookings cannot be restored into an archived hosting family",async()=>{
+ const {assertReservation}=await import("../src/lib/booking/service");
+ const db={family:{findFirst:async()=>null}} as unknown as Prisma.TransactionClient;
+ await assert.rejects(assertReservation(db,{id:"party",tenantId:"tenant",familyId:"archived",startTime:new Date("2030-01-01"),endTime:new Date("2030-01-02"),confirmedAt:new Date(),confirmationExpiresAt:null}),(e:unknown)=>e instanceof BookingError&&e.status===409);
+});

@@ -14,6 +14,7 @@ async function post(request:Request,{params}:Params){try{
  if(!body||typeof body!=="object"||Array.isArray(body))throw new BookingError("Invalid workflow request.");
  const event=await prisma.$transaction(async tx=>{
   const party=await lockReservation(tx,staff.tenantId,eventId);
+  if(party.familyId&&!await tx.family.findFirst({where:{id:party.familyId,tenantId:staff.tenantId,status:"ACTIVE"},select:{id:true}}))throw new BookingError("Restore the hosting family before starting party activity.",409);
   if(party.status==="CANCELLED")throw new BookingError("Restore this party before changing its workflow.");
   const current=party.workflowStep&&isPartyWorkflowStepKey(party.workflowStep)?party.workflowStep:"PENDING";
   const next=getNextWorkflowStep(current),requested=typeof body.workflowStep==="string"&&isPartyWorkflowStepKey(body.workflowStep)?body.workflowStep:body.complete===true?completeWorkflowStep.key:next?.key??completeWorkflowStep.key;
