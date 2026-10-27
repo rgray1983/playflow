@@ -889,6 +889,11 @@ model ProviderCheckout {
 }
 
 model BookingMessage {
+ automationKey String?
+ automationRunId String?
+ automationAt DateTime?
+ automationClaimedAt DateTime?
+ automationError String?
  transportVersion Int @default(0)
  replyTo String?
  deliveryStatus String @default("UNKNOWN")

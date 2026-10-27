@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import {beforeEach,mock,test} from "node:test";
+let waits:any[]=[],starts:any[]=[],remembered:any[]=[],failures:any[]=[],checks:any[]=[],next:(number|null)[]=[],batches:any[][]=[],throws=false;
+mock.module("workflow",{namedExports:{sleep:async(value:any)=>{waits.push(value);}}});
+mock.module("workflow/api",{namedExports:{start:async(fn:any,args:any)=>{starts.push({fn:fn.name,args});return {runId:`run-${starts.length}`};}}});
+mock.module("../src/lib/communications/automation-steps.ts",{namedExports:{claimEmailBatch:async()=>batches.shift()??[],rememberEmailRun:async(...args:any[])=>{remembered.push(args);},failEmailAutomation:async(...args:any[])=>{failures.push(args);},runEmailAttempt:async()=>{if(throws)throw new Error("private failure");return next.shift()??null;},completeAutomationCheck:async(...args:any[])=>{checks.push(args);}}});
+const {deliverBookingEmail,dispatchBookingEmails,checkEmailTimer}=await import("../src/lib/communications/email-workflows");
+const claim={id:"message",tenantId:"tenant",key:"worker-key"};
+beforeEach(()=>{waits=[];starts=[];remembered=[];failures=[];checks=[];next=[];batches=[];throws=false;});
+test("delivery workflows durably sleep and then recheck current message state",async()=>{next=[Date.now()+60000,null];await deliverBookingEmail(claim);assert.equal(waits.length,1);assert.ok(waits[0]>59000);assert.equal(failures.length,0);});
+test("unrecoverable worker failures become visible scheduling issues and runaway loops are bounded",async()=>{throws=true;await deliverBookingEmail(claim);assert.equal(failures[0][1],"WORKER_FAILED");throws=false;next=Array(40).fill(Date.now()+1000);await deliverBookingEmail(claim);assert.equal(waits.length,32);assert.equal(failures.at(-1)[1],"WORKER_REVIEW");});
+test("dispatchers enqueue scoped child jobs and record their run IDs",async()=>{batches=[[claim],[]];await dispatchBookingEmails("tenant");assert.deepEqual(starts[0].args,[claim]);assert.equal(starts[0].fn,"deliverBookingEmail");assert.deepEqual(remembered[0],[claim,"run-1"]);});
+test("large dispatches continue in a fresh durable run instead of growing an unbounded event log",async()=>{batches=Array.from({length:20},()=>[claim]);await dispatchBookingEmails("tenant");assert.equal(starts.length,21);assert.equal(starts.at(-1).fn,"dispatchBookingEmails");assert.deepEqual(starts.at(-1).args,["tenant"]);});
+test("the one-minute check wakes itself and records the scoped check without sending email",async()=>{await checkEmailTimer("tenant","2026-10-27T12:00:00.000Z");assert.deepEqual(waits,["60s"]);assert.deepEqual(checks,[["tenant","2026-10-27T12:00:00.000Z"]]);assert.equal(starts.length,0);});

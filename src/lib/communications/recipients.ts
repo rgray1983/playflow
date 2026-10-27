@@ -23,6 +23,12 @@ export async function allowedBusinessRecipients(db:Client,tenantId:string,recipi
   return allowed;
 }
 export async function businessRecipientAllowed(db:Client,tenantId:string,recipient:string){return (await allowedBusinessRecipients(db,tenantId,[recipient])).has(normalize(recipient));}
+export function recipientCondition(tenant:Prisma.Sql,email:Prisma.Sql){
+  const policy=deliveryPolicy();
+  if(!policy.testMode)return Prisma.sql`true`;
+  const explicit=policy.recipients.length?Prisma.sql`${email} IN (${Prisma.join(policy.recipients)})`:Prisma.sql`false`;
+  return policy.savedRecipientsEnabled?Prisma.sql`(${explicit} OR ${savedRecipientCondition(tenant,email)})`:explicit;
+}
 export function savedRecipientQueueQuery(tenantId:string|undefined,now:Date){
   const policy=deliveryPolicy();
   const extra=policy.recipients.length?Prisma.sql`m.recipient IN (${Prisma.join(policy.recipients)})`:Prisma.sql`false`;

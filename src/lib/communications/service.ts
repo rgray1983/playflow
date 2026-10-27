@@ -1,13 +1,14 @@
 import {buildBookingEmail,readPresentation,type EmailKind} from "./templates";
 import {deliveryPolicy} from "./delivery-policy";
 import {businessRecipientAllowed,savedRecipientQueueQuery} from "./recipients";
+import {automationEnabled} from "./automation-config";
 import type {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
 import {operations} from "@/lib/operations/settings";
 import {partyLinkPaths} from "@/lib/booking/party-links";
 import {FormError} from "@/lib/waivers/signing";
 export function senderReady(){try{const url=new URL(process.env.PLAYFLOW_APP_URL??"");return !!(process.env.RESEND_API_KEY&&process.env.PLAYFLOW_EMAIL_FROM&&url.protocol==="https:"&&!url.username&&!url.password);}catch{return false;}}
-export function emailSetup(){const policy=deliveryPolicy();return {testMode:policy.testMode,savedRecipientsEnabled:policy.savedRecipientsEnabled,testRecipientCount:policy.recipients.length,senderReady:senderReady(),providerKeyConfigured:!!process.env.RESEND_API_KEY,fromConfigured:!!process.env.PLAYFLOW_EMAIL_FROM,appUrlConfigured:!!process.env.PLAYFLOW_APP_URL,schedulerSecretConfigured:!!process.env.CRON_SECRET,webhookSecretConfigured:!!process.env.RESEND_WEBHOOK_SECRET};}
+export function emailSetup(){const policy=deliveryPolicy();return {testMode:policy.testMode,savedRecipientsEnabled:policy.savedRecipientsEnabled,testRecipientCount:policy.recipients.length,senderReady:senderReady(),providerKeyConfigured:!!process.env.RESEND_API_KEY,fromConfigured:!!process.env.PLAYFLOW_EMAIL_FROM,appUrlConfigured:!!process.env.PLAYFLOW_APP_URL,schedulerSecretConfigured:!!process.env.CRON_SECRET,durableJobsEnabled:automationEnabled(),webhookSecretConfigured:!!process.env.RESEND_WEBHOOK_SECRET};}
 export function retryTime(attempt:number,now=new Date(),retryAfter:string|null=null){const seconds=retryAfter?(Number(retryAfter)||Math.max(0,(new Date(retryAfter).getTime()-now.getTime())/1000)):0;const delay=Math.max(60,Math.min(3600,Math.max(Number.isFinite(seconds)?seconds:0,60*2**Math.min(attempt,6))));return new Date(now.getTime()+delay*1000);}
 export async function preparePartyMessages(tx:Prisma.TransactionClient,tenantId:string,partyId:string){
  const [t,p]=await Promise.all([tx.tenant.findUniqueOrThrow({where:{id:tenantId}}),tx.party.findFirst({where:{id:partyId,tenantId},include:{primaryParent:true}})]);

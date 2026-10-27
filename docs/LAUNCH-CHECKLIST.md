@@ -11,20 +11,24 @@ Only the current item is active. Record implementation, verification and remaini
 - [x] Per-business wording editor, live preview, defaults and frozen message snapshots.
 - [x] Test-recipient controls and retry/deduplication guards. Owner enabled automatic eligibility for saved contacts within each business on October 27; parent-by-parent inbox approval is not required.
 - [x] Authenticated no-send scheduler configuration check and controlled processor failure response.
-- [ ] Choose/activate a supported scheduled processor and verify unattended reminder delivery.
+- [x] Choose and configure Vercel durable per-message jobs for the active preview, with scoped claims, durable wakeups and retries.
+- [ ] Observe the hosted one-minute timer check and an actual unattended reminder delivery.
 - [x] Per-business reply-inbox verification, frozen Reply-To headers and live-delivery gate.
 - [x] Signed provider event processing, duplicate/out-of-order protection, delivery states, suppression and staff alerts.
 - [x] Scheduled processor success/failure timestamps and visible activation status.
 - [x] Automated expiration, cancellation, changed-recipient, lost-response and immutable-retry checks.
-- [ ] Verify Palmetto’s chosen reply inbox and accept an actual reply from the approved test message.
+- [x] Verify Palmetto’s chosen reply inbox (current database state confirmed).
+- [ ] Accept an actual reply from a newly sent test message.
 - [ ] Register the provider webhook/signing secret on a reachable deployment and observe real delivered/failure events.
 - [ ] Complete inbox acceptance for expiration, cancellation and changed-recipient scenarios with the approved test inbox.
 
-Implementation validation: 440 automated tests, changed-source lint and the production build pass. No email was sent by the agent during these changes. Provider/scheduler activation and signed-in acceptance remain separate checks.
+Implementation validation: 456 automated tests, changed-source lint and the production build pass. No email was sent by the agent during these changes. Provider/scheduler activation and signed-in acceptance remain separate checks.
 
 Done when booking notifications and reminders reach the approved inbox reliably without staff activity, replies go to the correct business, and delivery failures are visible. Change/cancellation message types are completed with item 2.
 
-Scheduling dependency: Vercel Cron runs on production deployments, not the current branch preview. Frequent jobs require an appropriate hosting plan. Prepare and validate the code during this item; production-address activation and an observed unattended run remain explicit release checks in item 11. Do not promote the app just to make the preview appear to have a working timer.
+Scheduling choice: Vercel durable workflows are configured for the active preview. A worker sleeps until its message is due and rechecks booking state before each attempt; this avoids promoting the app simply to enable production-only native Cron. Hosted wakeup and email acceptance are still unchecked. A one-minute no-email timer check and scheduling recovery controls are in Communications settings.
+
+Provider activation blocker: automatic approval review rejected storing a Vercel project protection-bypass key in the Resend callback URL because that would disclose a persistent credential to Resend. No webhook or signing-secret variable was created. The unused dedicated key created for the attempt was revoked. Owner approval of that specific credential sharing, or an approved public signed callback target, is required before retrying. Keep app protection enabled.
 
 ## 2. Finish booking changes and cancellation rules — QUEUED
 
