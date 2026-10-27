@@ -1,8 +1,9 @@
+import type {EmailCopy,EmailKind} from "@/lib/communications/copy";
 import type {FormKind,LegalForm} from "@/lib/waivers/forms";
 import {legalForm} from "@/lib/waivers/forms";
 export const configurableModules=["admissions","parties","memberships","retail"] as const;
 export type ModuleKey=typeof configurableModules[number];
-export type Operations={forms?:Partial<Record<FormKind,LegalForm>>;modules?:Partial<Record<ModuleKey,boolean>>;communications?:{enabled:boolean;reminderHours:number}};
+export type Operations={forms?:Partial<Record<FormKind,LegalForm>>;modules?:Partial<Record<ModuleKey,boolean>>;communications?:{enabled:boolean;reminderHours:number;templates?:Partial<Record<EmailKind,EmailCopy>>}};
 export function operations(value:unknown):Operations{return value&&typeof value==="object"&&!Array.isArray(value)?value as Operations:{};}
 export function tenantForms(tenant:{slug:string;operationalSettings?:unknown}){
  const saved=operations(tenant.operationalSettings).forms;

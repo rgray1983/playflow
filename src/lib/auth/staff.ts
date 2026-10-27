@@ -69,7 +69,7 @@ export function accessErrorResponse(error: unknown) {
   console.error("Staff request failed", error);
   return NextResponse.json({ error: "Unable to complete the staff request." }, { status: 500 });
 }
-export function withStaff<T extends (...args: never[]) => Promise<Response>>(permission: Permission, handler: T): T {
+export function withStaff<T extends (...args: never[]) => Promise<Response>>(permission: Permission, handler: T, options: {scheduleEmailDelivery?: boolean} = {}): T {
   const protectedHandler = async (...args: Parameters<T>) => {
     try {
       assertSameOrigin((args as unknown[])[0] as Request | undefined);
@@ -77,7 +77,7 @@ export function withStaff<T extends (...args: never[]) => Promise<Response>>(per
       const response = await staffStorage.run(staff, () => handler(...args));
       response.headers.set("Cache-Control", "private, no-store");
       const request=(args as unknown[])[0] as Request|undefined;
-      if(response.ok&&request&&!["GET","HEAD","OPTIONS"].includes(request.method))scheduleDelivery(staff.tenantId);
+      if(options.scheduleEmailDelivery!==false&&response.ok&&request&&!["GET","HEAD","OPTIONS"].includes(request.method))scheduleDelivery(staff.tenantId);
       return response;
     } catch (error) { return accessErrorResponse(error); }
   };

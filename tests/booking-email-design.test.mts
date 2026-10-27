@@ -25,3 +25,7 @@ test('missing or unsupported logos fall back to the business name; remote logos 
  const mail=buildBookingEmail({...input,brand:{name:'Another Venue',logoUrl:'https://brand.example.invalid/logo.png'}});assert.match(mail.presentation.html,/https:\/\/brand.example.invalid\/logo.png/);
 });
 test('light brand colors choose dark button and banner text for readable contrast',()=>{const mail=buildBookingEmail({...input,brand:{name:'Light Venue',primaryColor:'#FFFFFF'}});assert.match(mail.presentation.html,/bgcolor="#FFFFFF"/);assert.match(mail.presentation.html,/color:#172033/);});
+test('custom wording is escaped in HTML, retains line breaks and leaves booking status and links controlled',()=>{
+ const mail=buildBookingEmail({...input,kind:'HOLD',copy:{subject:'Your celebration awaits',introduction:'Welcome <script>bad</script>\nBring your party spirit!',closing:'Thanks,\nThe Team'}});
+ assert.equal(mail.subject,'Test Playhouse: Your celebration awaits');assert.match(mail.presentation.html,/Welcome &lt;script&gt;bad&lt;\/script&gt;<br>Bring your party spirit!/);assert.match(mail.presentation.html,/Thanks,<br>The Team/);assert.match(mail.presentation.html,/Your reservation is not confirmed yet/);assert.match(mail.text,/Your reservation is on hold and is not confirmed/);assert.match(mail.text,/Thanks,\nThe Team/);assert.ok(!mail.presentation.html.includes('secret-host'));
+});

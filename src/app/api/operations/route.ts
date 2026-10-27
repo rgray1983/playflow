@@ -12,7 +12,7 @@ async function put(request:Request){let body;try{body=await request.json();}catc
   if(typeof body.enabled!=="boolean"||![24,48,72].includes(body.reminderHours))return NextResponse.json({error:"Choose a reminder time."},{status:400});
   if(body.enabled&&!senderReady())return NextResponse.json({error:"Email delivery needs a verified platform sender before automatic messages can be enabled."},{status:409});
  }else return NextResponse.json({error:"Choose settings to update."},{status:400});
- await prisma.$transaction(async tx=>{const id=getStaffContext().tenantId;await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id=${id} FOR UPDATE`);const t=await tx.tenant.findUniqueOrThrow({where:{id}}),s=operations(t.operationalSettings);const updated=body.section==="modules"?{...s,modules:{...s.modules,[body.key]:body.enabled}}:{...s,communications:{enabled:body.enabled,reminderHours:body.reminderHours}};await tx.tenant.update({where:{id},data:{operationalSettings:updated as Prisma.InputJsonValue}});});
+ await prisma.$transaction(async tx=>{const id=getStaffContext().tenantId;await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id=${id} FOR UPDATE`);const t=await tx.tenant.findUniqueOrThrow({where:{id}}),s=operations(t.operationalSettings);const updated=body.section==="modules"?{...s,modules:{...s.modules,[body.key]:body.enabled}}:{...s,communications:{...s.communications,enabled:body.enabled,reminderHours:body.reminderHours}};await tx.tenant.update({where:{id},data:{operationalSettings:updated as Prisma.InputJsonValue}});});
  return NextResponse.json({saved:true});
 }
 export const GET = withStaff("settings.write",get);
