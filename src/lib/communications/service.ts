@@ -1,12 +1,13 @@
 import {buildBookingEmail,readPresentation,type EmailKind} from "./templates";
-import {deliveryPolicy,recipientAllowed} from "./delivery-policy";
+import {deliveryPolicy} from "./delivery-policy";
+import {businessRecipientAllowed,savedRecipientQueueQuery} from "./recipients";
 import type {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
 import {operations} from "@/lib/operations/settings";
 import {partyLinkPaths} from "@/lib/booking/party-links";
 import {FormError} from "@/lib/waivers/signing";
 export function senderReady(){try{const url=new URL(process.env.PLAYFLOW_APP_URL??"");return !!(process.env.RESEND_API_KEY&&process.env.PLAYFLOW_EMAIL_FROM&&url.protocol==="https:"&&!url.username&&!url.password);}catch{return false;}}
-export function emailSetup(){const policy=deliveryPolicy();return {testMode:policy.testMode,testRecipientCount:policy.recipients.length,senderReady:senderReady(),providerKeyConfigured:!!process.env.RESEND_API_KEY,fromConfigured:!!process.env.PLAYFLOW_EMAIL_FROM,appUrlConfigured:!!process.env.PLAYFLOW_APP_URL,schedulerSecretConfigured:!!process.env.CRON_SECRET,webhookSecretConfigured:!!process.env.RESEND_WEBHOOK_SECRET};}
+export function emailSetup(){const policy=deliveryPolicy();return {testMode:policy.testMode,savedRecipientsEnabled:policy.savedRecipientsEnabled,testRecipientCount:policy.recipients.length,senderReady:senderReady(),providerKeyConfigured:!!process.env.RESEND_API_KEY,fromConfigured:!!process.env.PLAYFLOW_EMAIL_FROM,appUrlConfigured:!!process.env.PLAYFLOW_APP_URL,schedulerSecretConfigured:!!process.env.CRON_SECRET,webhookSecretConfigured:!!process.env.RESEND_WEBHOOK_SECRET};}
 export function retryTime(attempt:number,now=new Date(),retryAfter:string|null=null){const seconds=retryAfter?(Number(retryAfter)||Math.max(0,(new Date(retryAfter).getTime()-now.getTime())/1000)):0;const delay=Math.max(60,Math.min(3600,Math.max(Number.isFinite(seconds)?seconds:0,60*2**Math.min(attempt,6))));return new Date(now.getTime()+delay*1000);}
 export async function preparePartyMessages(tx:Prisma.TransactionClient,tenantId:string,partyId:string){
  const [t,p]=await Promise.all([tx.tenant.findUniqueOrThrow({where:{id:tenantId}}),tx.party.findFirst({where:{id:partyId,tenantId},include:{primaryParent:true}})]);
@@ -19,11 +20,12 @@ export async function preparePartyMessages(tx:Prisma.TransactionClient,tenantId:
  const zone=new Intl.DateTimeFormat("en-US",{timeZone:t.timezone,timeZoneName:"short"}).formatToParts(p.startTime).find(part=>part.type==="timeZoneName")?.value??t.timezone;
  const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
  const [inbox,suppressed]=await Promise.all([tx.emailConfiguration.findUnique({where:{tenantId}}),tx.emailSuppression.findUnique({where:{tenantId_recipient:{tenantId,recipient}}})]);
+ const eligible=await businessRecipientAllowed(tx,tenantId,recipient);
  const settings=operations(t.operationalSettings).communications,links=partyLinkPaths(p),active=settings?.enabled&&senderReady()&&!suppressed&&(deliveryPolicy().testMode||!!(inbox?.verifiedAt&&inbox.replyTo));
  const add=async(kind:EmailKind,scheduledAt=new Date())=>{
   const email=buildBookingEmail({kind,copy:settings?.templates?.[kind],brand:t,title:p.title,date,time:p.endTime?`${time(p.startTime)} – ${time(p.endTime)}`:time(p.startTime),timezone:zone,setupTime:p.setupStartsAt?time(p.setupStartsAt):undefined,packageName:p.packageName,room:p.room,deposit:p.depositStatus==="WAIVED"?"Deposit waived":p.depositStatus.endsWith("COLLECTED")?`Deposit paid · ${money(Number(p.depositAmount??0))}`:Number(p.depositAmount)>0?`Deposit due · ${money(Number(p.depositAmount))}`:"No deposit required",balance:p.balanceDue!==null&&p.balanceDue!==undefined?money(Number(p.balanceDue)):undefined,holdDeadline:p.confirmationExpiresAt?`${p.confirmationExpiresAt.toLocaleString("en-US",{timeZone:t.timezone})} (${t.timezone})`:undefined,portalUrl:portal,hostUrl:origin&&links?origin+links.hostUrl:undefined,guestUrl:origin&&links?origin+links.guestUrl:undefined});
   const dedupeKey=`${p.id}:${kind}:${p.startTime.toISOString()}:${recipient}`;
-  const saved=await tx.bookingMessage.upsert({where:{tenantId_dedupeKey:{tenantId,dedupeKey}},create:{tenantId,partyId:p.id,kind,dedupeKey,recipient,subject:email.subject,body:email.text,presentation:email.presentation,status:active&&recipientAllowed(recipient)?"QUEUED":"DRAFT",scheduledAt},update:{}});
+  const saved=await tx.bookingMessage.upsert({where:{tenantId_dedupeKey:{tenantId,dedupeKey}},create:{tenantId,partyId:p.id,kind,dedupeKey,recipient,subject:email.subject,body:email.text,presentation:email.presentation,status:active&&eligible?"QUEUED":"DRAFT",scheduledAt},update:{}});
   // Upgrade only messages that have never been attempted; an uncertain retry must keep its original payload.
   if(!saved.presentation&&!saved.attemptedAt&&["DRAFT","QUEUED"].includes(saved.status))await tx.bookingMessage.updateMany({where:{id:saved.id,tenantId,status:{in:["DRAFT","QUEUED"]},attemptedAt:null},data:{subject:email.subject,body:email.text,presentation:email.presentation}});
   if(kind==="REMINDER"&&["DRAFT","QUEUED"].includes(saved.status)&&!saved.attemptedAt&&saved.scheduledAt.getTime()!==scheduledAt.getTime())await tx.bookingMessage.updateMany({where:{id:saved.id,tenantId,status:{in:["DRAFT","QUEUED"]},attemptedAt:null},data:{scheduledAt}});
@@ -46,7 +48,7 @@ export async function deliverMessage(id:string,tenantId:string){
  if(m.status==="SENDING"&&m.updatedAt>new Date(now.getTime()-60000))return;
  if(!operations(m.tenant.operationalSettings).communications?.enabled)return;
  // Recheck at delivery as well as preparation: old queued messages and retries cannot bypass test restrictions.
- if(!recipientAllowed(m.recipient))return;
+ if(!await businessRecipientAllowed(prisma,tenantId,m.recipient))return;
  if(m.scheduledAt>now||m.retryAt&&m.retryAt>now)return;
  const [inbox,suppressed]=await Promise.all([prisma.emailConfiguration.findUnique({where:{tenantId}}),prisma.emailSuppression.findUnique({where:{tenantId_recipient:{tenantId,recipient:m.recipient}}})]);
  if(suppressed){await prisma.bookingMessage.updateMany({where:{id,tenantId,status:{in:["QUEUED","SENDING"]},updatedAt:m.updatedAt},data:{status:"CANCELLED",failureCode:"RECIPIENT_SUPPRESSED",retryAt:null}});return;}
@@ -73,8 +75,8 @@ export async function deliverMessage(id:string,tenantId:string){
 }
 export async function processMessages(tenantId?:string){
  if(!senderReady())return 0;
- const policy=deliveryPolicy();if(policy.testMode&&!policy.recipients.length)return 0;
- const now=new Date(),candidates=await prisma.bookingMessage.findMany({where:{...(tenantId?{tenantId}:{}),...(policy.testMode?{recipient:{in:policy.recipients}}:{}),tenant:{operationalSettings:{path:["communications","enabled"],equals:true}},scheduledAt:{lte:now},AND:[{OR:[{retryAt:null},{retryAt:{lte:now}}]},{OR:[{status:"QUEUED"},{status:"SENDING",updatedAt:{lt:new Date(now.getTime()-60000)}}]}]},orderBy:[{scheduledAt:"asc"},{id:"asc"}],take:3,select:{id:true,tenantId:true}});
+ const policy=deliveryPolicy();if(policy.testMode&&!policy.savedRecipientsEnabled&&!policy.recipients.length)return 0;
+ const now=new Date(),candidates=policy.savedRecipientsEnabled?await prisma.$queryRaw<{id:string;tenantId:string}[]>(savedRecipientQueueQuery(tenantId,now)):await prisma.bookingMessage.findMany({where:{...(tenantId?{tenantId}:{}),...(policy.testMode?{recipient:{in:policy.recipients}}:{}),tenant:{operationalSettings:{path:["communications","enabled"],equals:true}},scheduledAt:{lte:now},AND:[{OR:[{retryAt:null},{retryAt:{lte:now}}]},{OR:[{status:"QUEUED"},{status:"SENDING",updatedAt:{lt:new Date(now.getTime()-60000)}}]}]},orderBy:[{scheduledAt:"asc"},{id:"asc"}],take:3,select:{id:true,tenantId:true}});
  const results=await Promise.allSettled(candidates.map(m=>deliverMessage(m.id,m.tenantId)));
  // A bad record/provider response must not stop the other businesses in this batch.
  for(const result of results)if(result.status==="rejected")console.error("A booking message needs delivery review.");

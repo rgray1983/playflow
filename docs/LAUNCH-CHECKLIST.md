@@ -9,7 +9,7 @@ Only the current item is active. Record implementation, verification and remaini
 - [x] Verified shared sending domain and test delivery to extngraphics@gmail.com (owner-confirmed).
 - [x] Branded hold, confirmation and reminder emails, plain-text fallback and separate private/shareable links.
 - [x] Per-business wording editor, live preview, defaults and frozen message snapshots.
-- [x] Test-recipient restrictions and retry/deduplication guards.
+- [x] Test-recipient controls and retry/deduplication guards. Owner enabled automatic eligibility for saved contacts within each business on October 27; parent-by-parent inbox approval is not required.
 - [x] Authenticated no-send scheduler configuration check and controlled processor failure response.
 - [ ] Choose/activate a supported scheduled processor and verify unattended reminder delivery.
 - [x] Per-business reply-inbox verification, frozen Reply-To headers and live-delivery gate.
@@ -20,7 +20,7 @@ Only the current item is active. Record implementation, verification and remaini
 - [ ] Register the provider webhook/signing secret on a reachable deployment and observe real delivered/failure events.
 - [ ] Complete inbox acceptance for expiration, cancellation and changed-recipient scenarios with the approved test inbox.
 
-Implementation validation: 430 automated tests, changed-source lint and the production build pass. No email was sent by the agent during these changes. Provider/scheduler activation and signed-in acceptance remain separate checks.
+Implementation validation: 440 automated tests, changed-source lint and the production build pass. No email was sent by the agent during these changes. Provider/scheduler activation and signed-in acceptance remain separate checks.
 
 Done when booking notifications and reminders reach the approved inbox reliably without staff activity, replies go to the correct business, and delivery failures are visible. Change/cancellation message types are completed with item 2.
 

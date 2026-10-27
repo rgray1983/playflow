@@ -2,7 +2,8 @@ import {createHash,randomBytes,randomUUID,timingSafeEqual} from "node:crypto";
 import {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
 import {FormError} from "@/lib/waivers/signing";
-import {recipientAllowed} from "./delivery-policy";
+import {deliveryPolicy} from "./delivery-policy";
+import {businessRecipientAllowed} from "./recipients";
 
 export function inboxAddress(value:unknown) {
   if(typeof value!=="string")throw new FormError("Enter one email address.",400);
@@ -13,11 +14,12 @@ export function inboxAddress(value:unknown) {
 const hash=(id:string,code:string)=>createHash("sha256").update(`${id}:${code}`).digest("hex");
 export async function replyInbox(tenantId:string) {
   const saved=await prisma.emailConfiguration.findUnique({where:{tenantId}});
-  return {replyTo:saved?.verifiedAt?saved.replyTo:null,verifiedAt:saved?.verifiedAt??null,pendingEmail:saved?.pendingEmail??null,challengeId:saved?.challengeId??null,expiresAt:saved?.expiresAt??null,requestedAt:saved?.requestedAt??null};
+  const policy=deliveryPolicy();
+  return {testMode:policy.testMode,savedRecipientsEnabled:policy.savedRecipientsEnabled,replyTo:saved?.verifiedAt?saved.replyTo:null,verifiedAt:saved?.verifiedAt??null,pendingEmail:saved?.pendingEmail??null,challengeId:saved?.challengeId??null,expiresAt:saved?.expiresAt??null,requestedAt:saved?.requestedAt??null};
 }
 export async function requestInboxVerification(tenantId:string,value:unknown) {
   const email=inboxAddress(value);
-  if(!recipientAllowed(email))throw new FormError("Test mode: verification can only be sent to an approved test inbox.",409);
+  if(!await businessRecipientAllowed(prisma,tenantId,email))throw new FormError(deliveryPolicy().savedRecipientsEnabled?"Use an email saved on this business’s contact profile, approved staff or active family records.":"Test mode: verification can only be sent to an approved test inbox.",409);
   if(!process.env.RESEND_API_KEY||!process.env.PLAYFLOW_EMAIL_FROM)throw new FormError("The PlayFlow sender must be configured first.",409);
   const now=new Date(),id=randomUUID(),code=randomBytes(6).toString("hex").toUpperCase();
   await prisma.$transaction(async tx=>{

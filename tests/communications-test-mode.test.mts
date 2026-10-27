@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import {beforeEach,mock,test} from "node:test";
 import {deliveryPolicy,recipientAllowed} from "../src/lib/communications/delivery-policy";
+let savedContact=false;
 let updates=0,runs=0,lastLookup:any,lookupExists=true;
-const db={communicationJobState:{findUnique:async()=>null},emailConfiguration:{findUnique:async()=>null},emailSuppression:{findUnique:async()=>null,findMany:async()=>[]},emailDeliveryEvent:{findFirst:async()=>null},bookingMessage:{
+const db={$queryRaw:async(q:any)=>{assert.ok(q.values.includes("tenant"));return savedContact?[{email:"parent@example.invalid"}]:[];},communicationJobState:{findUnique:async()=>null},emailConfiguration:{findUnique:async()=>null},emailSuppression:{findUnique:async()=>null,findMany:async()=>[]},emailDeliveryEvent:{findFirst:async()=>null},bookingMessage:{
  findFirst:async(q:any)=>{lastLookup=q;return lookupExists?{recipient:"parent@example.invalid"}:null;},
  updateMany:async()=>{updates++;return {count:1};},
  findMany:async()=>[{id:"message",recipient:"parent@example.invalid"}],
@@ -11,7 +12,7 @@ mock.module("../src/lib/prisma.ts",{namedExports:{prisma:db}});
 mock.module("../src/lib/auth/staff.ts",{namedExports:{getStaffContext:()=>({tenantId:"tenant"}),withStaff:(permission:string,handler:any)=>{assert.equal(permission,"settings.write");return handler;}}});
 mock.module("../src/lib/communications/service.ts",{namedExports:{preparePartyMessages:async()=>{},senderReady:()=>true,emailSetup:()=>({testMode:true}),processMessages:async(tenantId:string)=>{assert.equal(tenantId,"tenant");runs++;}}});
 const {POST,GET}=await import("../src/app/api/communications/route");
-beforeEach(()=>{updates=0;runs=0;lastLookup=null;lookupExists=true;delete process.env.PLAYFLOW_EMAIL_DELIVERY_MODE;delete process.env.PLAYFLOW_EMAIL_TEST_RECIPIENTS;process.env.VERCEL_ENV="preview";});
+beforeEach(()=>{delete process.env.PLAYFLOW_EMAIL_TEST_RECIPIENT_MODE;savedContact=false;updates=0;runs=0;lastLookup=null;lookupExists=true;delete process.env.PLAYFLOW_EMAIL_DELIVERY_MODE;delete process.env.PLAYFLOW_EMAIL_TEST_RECIPIENTS;process.env.VERCEL_ENV="preview";});
 const request=(action:string,id:any="message")=>new Request("https://app.example.invalid/api/communications",{method:"POST",body:JSON.stringify({action,id})});
 test("test recipients require exact addresses; malformed config and unknown mode fail closed",()=>{
  for(const value of [undefined,"","parent@example.invalid;other@example.invalid","Parent <parent@example.invalid>","parent@example.invalid,broken"]){
@@ -46,4 +47,9 @@ test("queue view marks blocked recipients without changing message content",asyn
  process.env.PLAYFLOW_EMAIL_TEST_RECIPIENTS="parent@example.invalid";
  const allowed=await (await GET()).json();assert.equal(allowed.items[0].deliveryAllowed,true);
  assert.equal(allowed.items[0].recipient,"parent@example.invalid");
+});
+
+test("saved contacts become eligible in the queue view and manual actions without an inbox allowlist entry",async()=>{
+ process.env.PLAYFLOW_EMAIL_TEST_RECIPIENT_MODE="database";savedContact=true;const data=await (await GET()).json();assert.equal(data.items[0].deliveryAllowed,true);assert.equal((await POST(request("queue"))).status,200);assert.equal(runs,1);
+ savedContact=false;assert.equal((await POST(request("queue"))).status,409);assert.equal(runs,1);
 });

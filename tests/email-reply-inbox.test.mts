@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import {beforeEach,mock,test} from "node:test";
+let savedContact=false;
 let saved:any=null,sends:any[]=[],dispatches=0,signedIn=true,role="OWNER",status=200,transportError=false,tail=Promise.resolve();
-const db:any={employee:{findUnique:async()=>({id:"staff",tenantId:"tenant-a",authUserId:"user",firstName:"Test",lastName:"Owner",status:"ACTIVE",accessApproved:true,accessRole:role,staffRole:null}),findMany:async()=>[]},$queryRaw:async()=>[],emailConfiguration:{
+const db:any={employee:{findUnique:async()=>({id:"staff",tenantId:"tenant-a",authUserId:"user",firstName:"Test",lastName:"Owner",status:"ACTIVE",accessApproved:true,accessRole:role,staffRole:null}),findMany:async()=>[]},$queryRaw:async(q:any)=>q.text.startsWith("SELECT target.email")&&savedContact?[{email:"saved@example.invalid"}]:[],emailConfiguration:{
  findUnique:async(q:any)=>{assert.equal(q.where.tenantId,"tenant-a");return saved?structuredClone(saved):null;},
  upsert:async(q:any)=>{saved=saved?{...saved,...q.update}:q.create;return saved;},
  update:async(q:any)=>{assert.equal(q.where.tenantId,"tenant-a");const data={...q.data};if(data.attempts?.increment)data.attempts=saved.attempts+data.attempts.increment;saved={...saved,...data};return saved;},
@@ -15,7 +16,7 @@ const request=(body:any,origin="https://app.example.invalid")=>new Request("http
 async function start(email="approved@example.invalid"){return POST(request({action:"request",email,tenantId:"foreign-tenant"}));}
 function code(){return sends.at(-1).body.text.match(/code is: ([A-F0-9]{12})/)[1];}
 async function confirm(value=code(),id=saved.challengeId){return POST(request({action:"confirm",challengeId:id,code:value}));}
-beforeEach(()=>{saved=null;sends=[];dispatches=0;signedIn=true;role="OWNER";status=200;transportError=false;tail=Promise.resolve();process.env.VERCEL_ENV="preview";process.env.PLAYFLOW_EMAIL_TEST_RECIPIENTS="approved@example.invalid,second@example.invalid";process.env.RESEND_API_KEY="test-not-real";process.env.PLAYFLOW_EMAIL_FROM="PlayFlow <test@example.invalid>";mock.method(globalThis,"fetch",async(input:any,init:any)=>{assert.equal(input,"https://api.resend.com/emails");sends.push({body:JSON.parse(init.body),key:init.headers["Idempotency-Key"]});if(transportError)throw new Error("private transport error");return Response.json({id:"verification-id"},{status});});});
+beforeEach(()=>{delete process.env.PLAYFLOW_EMAIL_TEST_RECIPIENT_MODE;savedContact=false;saved=null;sends=[];dispatches=0;signedIn=true;role="OWNER";status=200;transportError=false;tail=Promise.resolve();process.env.VERCEL_ENV="preview";process.env.PLAYFLOW_EMAIL_TEST_RECIPIENTS="approved@example.invalid,second@example.invalid";process.env.RESEND_API_KEY="test-not-real";process.env.PLAYFLOW_EMAIL_FROM="PlayFlow <test@example.invalid>";mock.method(globalThis,"fetch",async(input:any,init:any)=>{assert.equal(input,"https://api.resend.com/emails");sends.push({body:JSON.parse(init.body),key:init.headers["Idempotency-Key"]});if(transportError)throw new Error("private transport error");return Response.json({id:"verification-id"},{status});});});
 test("reply inbox verification is tenant scoped, hashes the one-time code and never dispatches bookings",async()=>{
  assert.equal((await start(" APPROVED@EXAMPLE.INVALID ")).status,200);assert.deepEqual(sends[0].body.to,["approved@example.invalid"]);assert.match(sends[0].key,/^playflow-reply-/);assert.equal(saved.tenantId,"tenant-a");assert.match(saved.challengeHash,/^[a-f0-9]{64}$/);assert.ok(!JSON.stringify(saved).includes(code()));
  const pending=await (await GET()).json();assert.equal(pending.replyTo,null);assert.ok(!("challengeHash" in pending));assert.ok(!JSON.stringify(pending).includes(code()));
@@ -42,4 +43,8 @@ test("an uncertain provider response exposes no error details and a received cod
 });
 test("reply settings require verified settings staff and same-origin writes",async()=>{
  signedIn=false;assert.equal((await GET()).status,401);signedIn=true;for(const value of ["FRONT_DESK","PARTY_HOST"]){role=value;assert.equal((await GET()).status,403);assert.equal((await start()).status,403);}role="MANAGER";assert.equal((await GET()).status,200);assert.equal((await POST(request({action:"request",email:"approved@example.invalid"},"https://foreign.invalid"))).status,403);assert.equal(sends.length,0);assert.equal(dispatches,0);
+});
+
+test("a saved business contact can verify the reply inbox in database testing mode",async()=>{
+ process.env.PLAYFLOW_EMAIL_TEST_RECIPIENT_MODE="database";savedContact=true;assert.equal((await start("saved@example.invalid")).status,200);assert.equal((await confirm()).status,200);assert.equal(saved.replyTo,"saved@example.invalid");assert.equal(sends.length,1);assert.equal(dispatches,0);
 });
