@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import {beforeEach,mock,test} from 'node:test';
-let ready=false,runs=0;
-mock.module('../src/lib/communications/service.ts',{namedExports:{senderReady:()=>ready,processMessages:async()=>{runs++;return 3;}}});
+let ready=false,runs=0,failed=false;
+mock.module('../src/lib/communications/service.ts',{namedExports:{senderReady:()=>ready,processMessages:async()=>{runs++;if(failed)throw new Error("private provider failure");return 3;}}});
 const {GET}=await import('../src/app/api/jobs/communications/route');
-beforeEach(()=>{ready=false;runs=0;process.env.CRON_SECRET='test-only-queue-secret-not-real';});
+beforeEach(()=>{ready=false;runs=0;failed=false;process.env.CRON_SECRET='test-only-queue-secret-not-real';});
 const request=(token?:string)=>new Request('https://example.invalid/api/jobs/communications',{headers:token?{authorization:token}:{}});
 test('scheduled message processor refuses missing and mismatched authorization before processing',async()=>{for(const token of [undefined,'Bearer wrong','not-a-bearer'])assert.equal((await GET(request(token))).status,401);assert.equal(runs,0);delete process.env.CRON_SECRET;assert.equal((await GET(request('Bearer '))).status,401);});
 test('authorized processor remains idle before email setup and processes only when configured',async()=>{const token='Bearer test-only-queue-secret-not-real';let response=await GET(request(token));assert.equal(response.status,200);assert.deepEqual(await response.json(),{processed:0,configured:false});assert.equal(runs,0);ready=true;response=await GET(request(token));assert.deepEqual(await response.json(),{processed:3});assert.equal(runs,1);});
+
+test('authenticated dry-run checks configuration without processing the queue',async()=>{for(const configured of [false,true]){ready=configured;const response=await GET(new Request('https://example.invalid/api/jobs/communications?dryRun=1',{headers:{authorization:'Bearer test-only-queue-secret-not-real'}}));assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'private, no-store');assert.deepEqual(await response.json(),{dryRun:true,configured,processed:0});}assert.equal(runs,0);assert.equal((await GET(new Request('https://example.invalid/api/jobs/communications?dryRun=1'))).status,401);});
+test('processor failures return a retryable response without leaking provider details',async()=>{ready=true;failed=true;const response=await GET(request('Bearer test-only-queue-secret-not-real'));assert.equal(response.status,503);assert.ok(!(await response.text()).includes('private provider failure'));assert.equal(runs,1);});

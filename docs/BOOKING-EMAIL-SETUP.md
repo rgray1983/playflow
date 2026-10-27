@@ -52,3 +52,13 @@ GET/PUT /api/communications/templates require settings.write and scope all datab
 Template-only saves explicitly opt out of the staff mutation wrapper’s background email processing. Editing/previewing/saving never sends an email or enables delivery. Other staff mutations retain the existing processing behavior. The preview inbox allowlist is unchanged.
 
 Validation: 405 automated tests pass, including real staff-wrapper authorization, cross-site rejection, concurrent saves, preservation of unrelated settings, no-dispatch behavior, escaping, and immutable saved messages. Changed-source lint and TypeScript checks pass. Signed-in editor interaction and inbox acceptance remain an owner check; no real template settings or booking messages were changed during automated tests.
+
+## Scheduler activation check
+
+The ordered owner-approved execution plan is docs/LAUNCH-CHECKLIST.md, with email automation active and the premium facelift before the sister's trial. Email automation is not yet marked complete.
+
+A scheduler can first call authenticated GET /api/jobs/communications?dryRun=1. It checks authentication and sender configuration, returns processed:0, and never reads or processes the message queue. Missing/wrong authorization is rejected even for dry runs. Responses are private/no-store; processor failures return a generic retryable 503 without exposing provider details. Remove dryRun only after the intended deployment, schedule, recipient restriction and sender are verified.
+
+Vercel Cron invokes production deployments, not branch previews. A frequent timer needs a compatible hosting plan (Hobby allows only daily execution). The current preview remains protected; no deployment protection was removed, no production promotion occurred, no paid service was enabled, and no scheduler or real-recipient delivery was activated. Verify the hosting plan and stable target before committing a frequent native cron schedule; an unsupported schedule can fail deployment. The scheduler's observed unattended execution remains a production-readiness checkbox.
+
+References: https://vercel.com/docs/cron-jobs/manage-cron-jobs and https://vercel.com/docs/cron-jobs/usage-and-pricing

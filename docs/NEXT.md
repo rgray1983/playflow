@@ -12,19 +12,13 @@ learn from real-world use.
 
 # 🔥 Highest Priority
 
-Owner direction: finish the operating app and dashboard first. Guided owner onboarding and PlayFlow subscription billing follow afterward.
+The owner-approved execution order is now maintained in [LAUNCH-CHECKLIST.md](LAUNCH-CHECKLIST.md). That checklist supersedes older sequencing and stale integration status below.
 
-**Families stages 1–4 are implemented:** staff directory/editing, shared workflow edits, full scoped history and manager portal assistance, plus guarded archive/restore. See `docs/FAMILIES-MODULE-PLAN.md` and `docs/reviews/2026-10-25-families-management.md`. Staff membership management is now implemented; see `docs/reviews/2026-10-26-overnight-operations.md`. Next: signed-in workflow/tablet acceptance and verified email setup. Owner decision: archiving is sufficient; permanent deletion is outside the current scope.
+Current item: **1 — Finish email automation (in progress).** Shared Resend test delivery, branded designs and editable per-business wording are implemented. Scheduled activation, verified reply routing and provider event tracking are still outstanding. The no-send scheduler configuration check is ready for deployment acceptance.
 
-> Shared parent/staff booking now includes the required hosting-parent rental agreement before deposit checkout. See `docs/reviews/2026-10-24-shared-booking.md` for implementation and acceptance checks.
+Sequence: email automation → booking changes/cancellations → payment corrections/recovery → daily closeout/reports → remaining daily workflows → Wix migration preparation → premium facelift → our release checks → sister's trial → feedback fixes → production activation/final import → commercial SaaS onboarding/billing.
 
-1. Party checkout: deposits, balances, extras and iPad Square Reader. Shared checkout, confirmation gates and Reader handoff are implemented; physical Live reader acceptance remains blocked on platform Live setup and callback registration.
-2. Booking communications: durable hold/confirmation/reminder previews and delivery queue implemented. Retry/backoff, sender snapshots, current-recipient/readiness checks and setup diagnostics are implemented. Connect a verified PlayFlow email sender, configure an authenticated scheduled queue trigger, enable delivery deliberately, and verify with owner-controlled test addresses.
-3. Forms and settings: tenant-owned published waivers/rental agreements and enforced new-activity module switches implemented. Run second-business owner/parent/staff acceptance and review approved wording before rollout.
-4. Reporting and payment corrections: daily collections, Sandbox separation, unpaid balances, Square receipts and guarded Square refund requests implemented. Complete provider Sandbox refund acceptance, cash/manual reversals, external Square refund reconciliation and bank settlement matching.
-5. Dashboard: live collections, separate Sandbox totals, today's unpaid parties, missing agreements/guest waivers and payment/message alerts implemented. Dashboard refreshes while visible, filters quick actions by role and highlights memberships nearing expiry. Continue business acceptance and tablet visual review.
-
-See `docs/reviews/2026-10-21-operations.md` for exact verification and external setup blockers. PlayFlow remains a multi-business SaaS; Palmetto Playhouse is the first customer.
+The premium facelift is explicitly before the sister's trial. Preserve the approved POS keypad/payment layout. Archiving is sufficient for this release; permanent family deletion stays deferred.
 
 ------------------------------------------------------------------------
 
