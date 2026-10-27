@@ -1,13 +1,14 @@
+import {recipientAllowed} from "@/lib/communications/delivery-policy";
 import {NextResponse} from "next/server";
 import {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
 import {getStaffContext,withStaff} from "@/lib/auth/staff";
 import {operations} from "@/lib/operations/settings";
 import {preparePartyMessages,processMessages,senderReady,emailSetup} from "@/lib/communications/service";
-async function get(){return NextResponse.json({...emailSetup(),items:await prisma.bookingMessage.findMany({where:{tenantId:getStaffContext().tenantId},orderBy:{createdAt:"desc"},take:100,select:{id:true,partyId:true,kind:true,recipient:true,subject:true,body:true,status:true,scheduledAt:true,sentAt:true,failureCode:true,retryAt:true,attemptCount:true}})});}
+async function get(){return NextResponse.json({...emailSetup(),items:(await prisma.bookingMessage.findMany({where:{tenantId:getStaffContext().tenantId},orderBy:{createdAt:"desc"},take:100,select:{id:true,partyId:true,kind:true,recipient:true,subject:true,body:true,status:true,scheduledAt:true,sentAt:true,failureCode:true,retryAt:true,attemptCount:true}})).map(item=>({...item,deliveryAllowed:recipientAllowed(item.recipient)}))});}
 async function post(request:Request){let b;try{b=await request.json();}catch{return NextResponse.json({error:"Invalid request."},{status:400});}const tenantId=getStaffContext().tenantId;
  if(!b||typeof b!=="object"||Array.isArray(b))return NextResponse.json({error:"Invalid request."},{status:400});
- if(["queue","retry"].includes(b.action)){const t=await prisma.tenant.findUniqueOrThrow({where:{id:tenantId}});if(!senderReady()||!operations(t.operationalSettings).communications?.enabled)return NextResponse.json({error:"Configure the sender and enable message rules before queueing delivery."},{status:409});}
+ if(["queue","retry"].includes(b.action)){if(typeof b.id!=="string")return NextResponse.json({error:"Choose a message."},{status:400});const message=await prisma.bookingMessage.findFirst({where:{id:b.id,tenantId},select:{recipient:true}});if(!message)return NextResponse.json({error:"Message not found."},{status:404});if(!recipientAllowed(message.recipient))return NextResponse.json({error:"Test mode: this recipient is not an approved test inbox. Delivery is blocked."},{status:409});const t=await prisma.tenant.findUniqueOrThrow({where:{id:tenantId}});if(!senderReady()||!operations(t.operationalSettings).communications?.enabled)return NextResponse.json({error:"Configure the sender and enable message rules before queueing delivery."},{status:409});}
  if(b?.action==="prepare"){
   const parties=await prisma.party.findMany({where:{tenantId,status:{notIn:["CANCELLED","COMPLETED"]},startTime:{gt:new Date()}},take:100,orderBy:{startTime:"asc"},select:{id:true}});
   for(const p of parties)await prisma.$transaction(async tx=>{await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id=${tenantId} FOR UPDATE`);await preparePartyMessages(tx,tenantId,p.id);});

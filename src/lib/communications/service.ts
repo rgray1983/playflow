@@ -1,10 +1,11 @@
+import {deliveryPolicy,recipientAllowed} from "./delivery-policy";
 import type {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
 import {operations} from "@/lib/operations/settings";
 import {partyLinkPaths} from "@/lib/booking/party-links";
 import {FormError} from "@/lib/waivers/signing";
 export function senderReady(){try{const url=new URL(process.env.PLAYFLOW_APP_URL??"");return !!(process.env.RESEND_API_KEY&&process.env.PLAYFLOW_EMAIL_FROM&&url.protocol==="https:"&&!url.username&&!url.password);}catch{return false;}}
-export function emailSetup(){return {senderReady:senderReady(),providerKeyConfigured:!!process.env.RESEND_API_KEY,fromConfigured:!!process.env.PLAYFLOW_EMAIL_FROM,appUrlConfigured:!!process.env.PLAYFLOW_APP_URL,schedulerSecretConfigured:!!process.env.CRON_SECRET};}
+export function emailSetup(){const policy=deliveryPolicy();return {testMode:policy.testMode,testRecipientCount:policy.recipients.length,senderReady:senderReady(),providerKeyConfigured:!!process.env.RESEND_API_KEY,fromConfigured:!!process.env.PLAYFLOW_EMAIL_FROM,appUrlConfigured:!!process.env.PLAYFLOW_APP_URL,schedulerSecretConfigured:!!process.env.CRON_SECRET};}
 export function retryTime(attempt:number,now=new Date(),retryAfter:string|null=null){const seconds=retryAfter?(Number(retryAfter)||Math.max(0,(new Date(retryAfter).getTime()-now.getTime())/1000)):0;const delay=Math.max(60,Math.min(3600,Math.max(Number.isFinite(seconds)?seconds:0,60*2**Math.min(attempt,6))));return new Date(now.getTime()+delay*1000);}
 export async function preparePartyMessages(tx:Prisma.TransactionClient,tenantId:string,partyId:string){
  const [t,p]=await Promise.all([tx.tenant.findUniqueOrThrow({where:{id:tenantId}}),tx.party.findFirst({where:{id:partyId,tenantId},include:{primaryParent:true}})]);
@@ -14,7 +15,7 @@ export async function preparePartyMessages(tx:Prisma.TransactionClient,tenantId:
  const portal=origin?`${origin}/parent/${encodeURIComponent(t.slug)}`:`/parent/${encodeURIComponent(t.slug)}`;
  const when=p.startTime.toLocaleString("en-US",{timeZone:t.timezone,dateStyle:"full",timeStyle:"short"});
  const settings=operations(t.operationalSettings).communications,links=partyLinkPaths(p),active=settings?.enabled&&senderReady();
- const add=async(kind:string,subject:string,body:string,scheduledAt=new Date())=>{const dedupeKey=`${p.id}:${kind}:${p.startTime.toISOString()}:${recipient}`;const saved=await tx.bookingMessage.upsert({where:{tenantId_dedupeKey:{tenantId,dedupeKey}},create:{tenantId,partyId:p.id,kind,dedupeKey,recipient,subject,body,status:active?"QUEUED":"DRAFT",scheduledAt},update:{}});if(kind==="REMINDER"&&["DRAFT","QUEUED"].includes(saved.status)&&!saved.attemptedAt&&saved.scheduledAt.getTime()!==scheduledAt.getTime())await tx.bookingMessage.updateMany({where:{id:saved.id,tenantId,status:{in:["DRAFT","QUEUED"]},attemptedAt:null},data:{scheduledAt}});};
+ const add=async(kind:string,subject:string,body:string,scheduledAt=new Date())=>{const dedupeKey=`${p.id}:${kind}:${p.startTime.toISOString()}:${recipient}`;const saved=await tx.bookingMessage.upsert({where:{tenantId_dedupeKey:{tenantId,dedupeKey}},create:{tenantId,partyId:p.id,kind,dedupeKey,recipient,subject,body,status:active&&recipientAllowed(recipient)?"QUEUED":"DRAFT",scheduledAt},update:{}});if(kind==="REMINDER"&&["DRAFT","QUEUED"].includes(saved.status)&&!saved.attemptedAt&&saved.scheduledAt.getTime()!==scheduledAt.getTime())await tx.bookingMessage.updateMany({where:{id:saved.id,tenantId,status:{in:["DRAFT","QUEUED"]},attemptedAt:null},data:{scheduledAt}});};
  if(p.status==="PENDING"){
   if(p.confirmationExpiresAt&&p.confirmationExpiresAt<=new Date())return;
   await add("HOLD",`${t.name}: party reservation on hold`,`${p.title}\n${when} (${t.timezone})\n\nYour reservation is on hold and is not confirmed. Complete the rental agreement and required deposit in your parent portal: ${portal}\n${p.confirmationExpiresAt?`Hold expires: ${p.confirmationExpiresAt.toLocaleString("en-US",{timeZone:t.timezone})} (${t.timezone}).`:"Contact the venue about the hold deadline."}`);
@@ -33,6 +34,8 @@ export async function deliverMessage(id:string,tenantId:string){
  if(m.status==="SENT"||m.status==="CANCELLED"||m.status==="REVIEW"||m.status==="FAILED")return;
  if(m.status==="SENDING"&&m.updatedAt>new Date(now.getTime()-60000))return;
  if(!operations(m.tenant.operationalSettings).communications?.enabled)return;
+ // Recheck at delivery as well as preparation: old queued messages and retries cannot bypass test restrictions.
+ if(!recipientAllowed(m.recipient))return;
  if(m.scheduledAt>now||m.retryAt&&m.retryAt>now)return;
  const currentRecipient=m.party.primaryParent?.email?.trim().toLowerCase();
  const obsolete=currentRecipient!==m.recipient||["CANCELLED","COMPLETED"].includes(m.party.status)||m.party.startTime<=now||!m.dedupeKey.includes(m.party.startTime.toISOString())||(m.kind==="HOLD"&&(m.party.status!=="PENDING"||!!m.party.confirmationExpiresAt&&m.party.confirmationExpiresAt<=now))||(m.kind!=="HOLD"&&m.party.status==="PENDING");
@@ -53,7 +56,8 @@ export async function deliverMessage(id:string,tenantId:string){
 }
 export async function processMessages(tenantId?:string){
  if(!senderReady())return 0;
- const now=new Date(),candidates=await prisma.bookingMessage.findMany({where:{...(tenantId?{tenantId}:{}),tenant:{operationalSettings:{path:["communications","enabled"],equals:true}},scheduledAt:{lte:now},AND:[{OR:[{retryAt:null},{retryAt:{lte:now}}]},{OR:[{status:"QUEUED"},{status:"SENDING",updatedAt:{lt:new Date(now.getTime()-60000)}}]}]},orderBy:[{scheduledAt:"asc"},{id:"asc"}],take:3,select:{id:true,tenantId:true}});
+ const policy=deliveryPolicy();if(policy.testMode&&!policy.recipients.length)return 0;
+ const now=new Date(),candidates=await prisma.bookingMessage.findMany({where:{...(tenantId?{tenantId}:{}),...(policy.testMode?{recipient:{in:policy.recipients}}:{}),tenant:{operationalSettings:{path:["communications","enabled"],equals:true}},scheduledAt:{lte:now},AND:[{OR:[{retryAt:null},{retryAt:{lte:now}}]},{OR:[{status:"QUEUED"},{status:"SENDING",updatedAt:{lt:new Date(now.getTime()-60000)}}]}]},orderBy:[{scheduledAt:"asc"},{id:"asc"}],take:3,select:{id:true,tenantId:true}});
  const results=await Promise.allSettled(candidates.map(m=>deliverMessage(m.id,m.tenantId)));
  // A bad record/provider response must not stop the other businesses in this batch.
  for(const result of results)if(result.status==="rejected")console.error("A booking message needs delivery review.");

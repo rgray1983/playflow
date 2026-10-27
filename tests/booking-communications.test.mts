@@ -13,7 +13,7 @@ const db:any={tenant:{findUniqueOrThrow:async()=>tenant},waiver:{findFirst:async
 mock.module("../src/lib/prisma.ts",{namedExports:{prisma:db}});
 mock.module("../src/lib/booking/party-links.ts",{namedExports:{partyLinkPaths:(p:any)=>p.status!=="PENDING"?{hostUrl:"/rsvp/private-host/host",guestUrl:"/rsvp/shareable-guest"}:null}});
 const {preparePartyMessages,deliverMessage,processMessages,retryTime,emailSetup,senderReady}=await import("../src/lib/communications/service");
-beforeEach(()=>{responseStatus=200;transportError=false;lastCandidates=null;messages=[];sends=[];enabled=false;agreement=true;tenant.operationalSettings.communications.enabled=false;party={id:"party",tenantId:"tenant",status:"PENDING",depositAmount:100,depositStatus:"PENDING",title:"Test Child Party",startTime:new Date(Date.now()+10*86400000),confirmationExpiresAt:new Date(Date.now()+2*86400000),primaryParent:{email:"parent@example.invalid"}};process.env.RESEND_API_KEY="test-only-not-real";process.env.PLAYFLOW_EMAIL_FROM="PlayFlow <test@example.invalid>";process.env.PLAYFLOW_APP_URL="https://app.example.invalid";mock.method(globalThis,"fetch",async(input:any,init:any)=>{assert.equal(input,"https://api.resend.com/emails");sends.push({body:JSON.parse(init.body),key:init.headers["Idempotency-Key"]});if(transportError)throw new Error("simulated timeout");return Response.json({id:"provider-test-message"},{status:responseStatus,headers:{"retry-after":"120"}});});});
+beforeEach(()=>{responseStatus=200;transportError=false;lastCandidates=null;messages=[];sends=[];enabled=false;agreement=true;tenant.operationalSettings.communications.enabled=false;party={id:"party",tenantId:"tenant",status:"PENDING",depositAmount:100,depositStatus:"PENDING",title:"Test Child Party",startTime:new Date(Date.now()+10*86400000),confirmationExpiresAt:new Date(Date.now()+2*86400000),primaryParent:{email:"parent@example.invalid"}};process.env.PLAYFLOW_EMAIL_DELIVERY_MODE="live";process.env.VERCEL_ENV="production";delete process.env.PLAYFLOW_EMAIL_TEST_RECIPIENTS;process.env.RESEND_API_KEY="test-only-not-real";process.env.PLAYFLOW_EMAIL_FROM="PlayFlow <test@example.invalid>";process.env.PLAYFLOW_APP_URL="https://app.example.invalid";mock.method(globalThis,"fetch",async(input:any,init:any)=>{assert.equal(input,"https://api.resend.com/emails");sends.push({body:JSON.parse(init.body),key:init.headers["Idempotency-Key"]});if(transportError)throw new Error("simulated timeout");return Response.json({id:"provider-test-message"},{status:responseStatus,headers:{"retry-after":"120"}});});});
 test("unpaid holds prepare draft previews without releasing host or guest secrets or sending email",async()=>{await preparePartyMessages(db,"tenant","party");assert.equal(messages.length,1);assert.equal(messages[0].status,"DRAFT");assert.match(messages[0].body,/not confirmed/);assert.ok(!messages[0].body.includes("private-host"));await deliverMessage(messages[0].id,"tenant");assert.equal(sends.length,0);});
 test("confirmed paid signed parties get distinct host and guest links only in host-addressed messages",async()=>{party.status="CONFIRMED";party.depositStatus="CARD_COLLECTED";await preparePartyMessages(db,"tenant","party");await preparePartyMessages(db,"tenant","party");assert.equal(messages.length,2);assert.equal(messages[0].recipient,"parent@example.invalid");assert.match(messages[0].body,/Private host page \(keep this link private\)/);assert.match(messages[0].body,/Guest invitation link \(share this with guests\)/);assert.ok(messages[1].scheduledAt<party.startTime);});
 test("a confirmed status alone cannot trigger emails without a deposit and agreement",async()=>{party.status="CONFIRMED";await preparePartyMessages(db,"tenant","party");assert.equal(messages.length,0);party.depositStatus="WAIVED";agreement=false;await preparePartyMessages(db,"tenant","party");assert.equal(messages.length,0);});
@@ -29,3 +29,29 @@ test("uncertain transport retries stay within one idempotent request and stop af
 test("definitive authorization failure is not automatically retried and active leases cannot be stolen",async()=>{tenant.operationalSettings.communications.enabled=true;await preparePartyMessages(db,"tenant","party");messages[0].status="SENDING";messages[0].updatedAt=new Date();await deliverMessage(messages[0].id,"tenant");assert.equal(sends.length,0);messages[0].status="QUEUED";responseStatus=403;await deliverMessage(messages[0].id,"tenant");assert.equal(messages[0].status,"FAILED");await deliverMessage(messages[0].id,"tenant");assert.equal(sends.length,1);});
 test("processor bounds its batch, skips disabled businesses, and retries are scheduled with capped delays",async()=>{tenant.operationalSettings.communications.enabled=true;await preparePartyMessages(db,"tenant","party");await processMessages("tenant");assert.equal(lastCandidates.where.tenantId,"tenant");assert.equal(lastCandidates.where.tenant.operationalSettings.equals,true);assert.equal(lastCandidates.take,3);assert.ok(lastCandidates.where.AND[0].OR.some((c:any)=>c.retryAt?.lte instanceof Date));const now=new Date();assert.equal(retryTime(30,now,"99999").getTime()-now.getTime(),3600000);assert.ok(retryTime(0,now,"bad").getTime()>now.getTime());});
 test("re-preparing a reminder updates its unattempted schedule without queueing drafts",async()=>{party.status="CONFIRMED";party.depositStatus="WAIVED";await preparePartyMessages(db,"tenant","party");const original=messages.find(m=>m.kind==="REMINDER"),oldTime=original.scheduledAt;tenant.operationalSettings.communications.reminderHours=24;await preparePartyMessages(db,"tenant","party");assert.ok(original.scheduledAt>oldTime);assert.equal(original.status,"DRAFT");tenant.operationalSettings.communications.reminderHours=48;});
+
+test("missing delivery mode blocks new and previously queued messages without consuming attempts",async()=>{
+ tenant.operationalSettings.communications.enabled=true;
+ await preparePartyMessages(db,"tenant","party");
+ assert.equal(messages[0].status,"QUEUED");
+ delete process.env.PLAYFLOW_EMAIL_DELIVERY_MODE;
+ await deliverMessage(messages[0].id,"tenant");
+ assert.equal(sends.length,0);assert.equal(messages[0].attemptedAt,null);
+ assert.equal(await processMessages("tenant"),0);assert.equal(lastCandidates,null);
+ messages=[];await preparePartyMessages(db,"tenant","party");assert.equal(messages[0].status,"DRAFT");
+});
+test("preview delivery stays restricted even if live mode is accidentally configured",async()=>{
+ tenant.operationalSettings.communications.enabled=true;process.env.VERCEL_ENV="preview";
+ process.env.PLAYFLOW_EMAIL_TEST_RECIPIENTS="  PARENT@EXAMPLE.INVALID  ";
+ await preparePartyMessages(db,"tenant","party");assert.equal(messages[0].status,"QUEUED");
+ await processMessages("tenant");assert.deepEqual(lastCandidates.where.recipient.in,["parent@example.invalid"]);
+ assert.equal(sends.length,1);assert.deepEqual(sends[0].body.to,["parent@example.invalid"]);
+});
+test("removing approval blocks an uncertain retry and does not redirect private host messages",async()=>{
+ tenant.operationalSettings.communications.enabled=true;process.env.PLAYFLOW_EMAIL_DELIVERY_MODE="test";
+ process.env.PLAYFLOW_EMAIL_TEST_RECIPIENTS="parent@example.invalid";
+ await preparePartyMessages(db,"tenant","party");transportError=true;await deliverMessage(messages[0].id,"tenant");
+ messages[0].retryAt=new Date(0);process.env.PLAYFLOW_EMAIL_TEST_RECIPIENTS="different@example.invalid";
+ await deliverMessage(messages[0].id,"tenant");assert.equal(sends.length,1);assert.equal(messages[0].attemptCount,1);
+ assert.deepEqual(sends[0].body.to,["parent@example.invalid"]);
+});
