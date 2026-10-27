@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {beforeEach,mock,test} from "node:test";
 import {deliveryPolicy,recipientAllowed} from "../src/lib/communications/delivery-policy";
 let updates=0,runs=0,lastLookup:any,lookupExists=true;
-const db={bookingMessage:{
+const db={communicationJobState:{findUnique:async()=>null},emailConfiguration:{findUnique:async()=>null},emailSuppression:{findUnique:async()=>null,findMany:async()=>[]},emailDeliveryEvent:{findFirst:async()=>null},bookingMessage:{
  findFirst:async(q:any)=>{lastLookup=q;return lookupExists?{recipient:"parent@example.invalid"}:null;},
  updateMany:async()=>{updates++;return {count:1};},
  findMany:async()=>[{id:"message",recipient:"parent@example.invalid"}],

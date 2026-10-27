@@ -129,6 +129,8 @@ model Tenant {
   paymentConnections PaymentConnection[]
   providerCheckouts ProviderCheckout[]
   bookingMessages BookingMessage[]
+  emailConfiguration EmailConfiguration?
+  emailSuppressions EmailSuppression[]
   paymentRefunds PaymentRefund[]
   counterProducts CounterProduct[]
   counterSales CounterSale[]
@@ -887,6 +889,12 @@ model ProviderCheckout {
 }
 
 model BookingMessage {
+ transportVersion Int @default(0)
+ replyTo String?
+ deliveryStatus String @default("UNKNOWN")
+ deliveryUpdatedAt DateTime?
+ deliveredAt DateTime?
+ deliveryEvents EmailDeliveryEvent[]
  presentation Json?
  senderFrom String?
  attemptCount Int @default(0)
@@ -904,13 +912,58 @@ model BookingMessage {
  status String @default("DRAFT")
  scheduledAt DateTime @default(now())
  sentAt DateTime?
- providerId String?
+ providerId String? @unique
  attemptedAt DateTime?
  failureCode String?
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  @@unique([tenantId,dedupeKey])
  @@index([tenantId,status,scheduledAt])
+ @@index([tenantId,deliveryStatus])
+}
+
+model EmailConfiguration {
+ tenantId String @id
+ tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
+ replyTo String?
+ verifiedAt DateTime?
+ pendingEmail String?
+ challengeId String?
+ challengeHash String?
+ expiresAt DateTime?
+ attempts Int @default(0)
+ requestedAt DateTime?
+ windowStartedAt DateTime?
+ requestCount Int @default(0)
+ updatedAt DateTime @updatedAt
+}
+
+model EmailDeliveryEvent {
+ id String @id
+ messageId String
+ message BookingMessage @relation(fields:[messageId],references:[id],onDelete:Restrict)
+ kind String
+ providerId String
+ occurredAt DateTime
+ receivedAt DateTime @default(now())
+ @@index([messageId,occurredAt])
+}
+
+model EmailSuppression {
+ id String @id @default(cuid())
+ tenantId String
+ tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Restrict)
+ recipient String
+ reason String
+ createdAt DateTime @default(now())
+ @@unique([tenantId,recipient])
+}
+
+model CommunicationJobState {
+ id String @id
+ startedAt DateTime?
+ completedAt DateTime?
+ failedAt DateTime?
 }
 model PaymentRefund {
  id String @id @default(cuid())

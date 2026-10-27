@@ -14,7 +14,7 @@ learn from real-world use.
 
 The owner-approved execution order is now maintained in [LAUNCH-CHECKLIST.md](LAUNCH-CHECKLIST.md). That checklist supersedes older sequencing and stale integration status below.
 
-Current item: **1 — Finish email automation (in progress).** Shared Resend test delivery, branded designs and editable per-business wording are implemented. Scheduled activation, verified reply routing and provider event tracking are still outstanding. The no-send scheduler configuration check is ready for deployment acceptance.
+Current item: **1 — Finish email automation (in progress).** Shared Resend test delivery, branded designs, editable wording, reply-inbox verification, signed delivery-event processing/suppression and processor health timestamps are implemented. Remaining acceptance: verify Palmetto’s reply inbox, activate/observe provider webhooks on a reachable target, and activate/observe the unattended scheduler. Preview delivery stays restricted to the approved test inbox; no production promotion is needed for implementation.
 
 Sequence: email automation → booking changes/cancellations → payment corrections/recovery → daily closeout/reports → remaining daily workflows → Wix migration preparation → premium facelift → our release checks → sister's trial → feedback fixes → production activation/final import → commercial SaaS onboarding/billing.
 

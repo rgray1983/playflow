@@ -4,7 +4,7 @@ The application prepares holds, deposit/agreement-gated confirmations with disti
 
 ## Platform setup still needed
 
-The owner verified playflow-test.extngraphics.com in Resend and saved RESEND_API_KEY and PLAYFLOW_EMAIL_FROM for the testing preview. Presence and scope were checked by variable name only; no secret values were read or printed. CRON_SECRET and the scheduled trigger remain unconfigured. Platform setup is done once for PlayFlow, not by each customer.
+The owner verified playflow-test.extngraphics.com in Resend and saved RESEND_API_KEY and PLAYFLOW_EMAIL_FROM for the testing preview. Presence and scope were checked by variable name only; no secret values were read or printed. CRON_SECRET, RESEND_WEBHOOK_SECRET and the scheduled trigger remain unconfigured. Platform setup is done once for PlayFlow, not by each customer.
 
 1. Choose the PlayFlow sending domain/address and verify it in Resend. Connect a Resend sending API key as RESEND_API_KEY, and set PLAYFLOW_EMAIL_FROM to the verified sender. Store credentials as Vercel Secrets for the intended environment. Do not commit credentials or paste them into source.
 2. Use a stable absolute HTTPS PLAYFLOW_APP_URL reachable by intended parents. The current branch preview uses Vercel authentication protection, which must be accounted for before customer invitations.
@@ -19,7 +19,7 @@ The sender address is saved at first attempt; message body, recipient and provid
 
 Processing filters disabled businesses and future/backoff messages, uses small isolated batches and checks the current contact, booking status, deposit and agreement before releasing confirmation links. Re-preparing upcoming parties updates unattempted reminder schedules but does not auto-queue old drafts.
 
-SENT means Resend accepted the request. Inbox delivery, bounces and complaints are not tracked until a verified provider-event integration is added.
+SENT means Resend accepted the request. Separate delivery states are updated by signed provider events once the webhook integration is activated; see the delivery tracking section below.
 
 Primary provider reference: https://resend.com/docs/dashboard/emails/idempotency-keys
 
@@ -29,7 +29,7 @@ Missing PLAYFLOW_EMAIL_DELIVERY_MODE defaults to test mode. Vercel Preview deplo
 
 The restriction applies when preparing, approving, processing, and delivering messages, including already queued messages and uncertain retries. Blocked messages do not consume delivery attempts. The processor excludes blocked addresses before selecting a batch, so they cannot starve approved test messages. Company Settings shows test status, approved inbox count, and blocked message controls. Changing the environment requires a new deployment. Live delivery requires explicit PLAYFLOW_EMAIL_DELIVERY_MODE=live on a non-preview deployment and separate authorization after acceptance testing.
 
-No real emails have been sent as part of setup. Confirm the exact test recipient and delivery scope with the owner before an actual send. Sender branding and verified per-business reply-to addresses are the next configuration feature; the current sender is the platform environment value.
+The owner confirmed initial test delivery. The agent has not sent real email during implementation. The approved preview recipient remains extngraphics@gmail.com; do not broaden recipients without authorization. The platform sender remains centrally configured; each business verifies its own Reply-To inbox in the app.
 
 ## Shared branded booking designs
 
@@ -62,3 +62,27 @@ A scheduler can first call authenticated GET /api/jobs/communications?dryRun=1. 
 Vercel Cron invokes production deployments, not branch previews. A frequent timer needs a compatible hosting plan (Hobby allows only daily execution). The current preview remains protected; no deployment protection was removed, no production promotion occurred, no paid service was enabled, and no scheduler or real-recipient delivery was activated. Verify the hosting plan and stable target before committing a frequent native cron schedule; an unsupported schedule can fail deployment. The scheduler's observed unattended execution remains a production-readiness checkbox.
 
 References: https://vercel.com/docs/cron-jobs/manage-cron-jobs and https://vercel.com/docs/cron-jobs/usage-and-pricing
+
+
+## Reply inboxes and provider delivery tracking — October 27
+
+Company Settings → Communications now lets settings staff request a verification code for a business reply inbox and confirm it in the same page. The email address is normalized and rejects display names/multiple recipients/header characters. Preview verification is restricted to the same approved test-recipient allowlist as bookings. Codes expire after 15 minutes, are stored only as a challenge-bound hash, allow five guesses and can be used once. Requests have a two-minute cooldown and five-per-business hourly limit, protected by the tenant row lock. An existing verified reply inbox remains active while a replacement is pending. Neither verifying nor reading these settings dispatches booking emails. A send with an uncertain response keeps its code usable if it actually arrived.
+
+New booking attempts freeze Reply-To and correlation tags with the sender at first claim. Uncertain retries preserve that exact payload; attempted legacy messages retain their old payload without new tags/headers. First live attempts require a verified reply inbox. Approved preview testing remains available while the inbox is unverified. Business customers configure an inbox in PlayFlow; they never need a Resend account or backend credentials.
+
+The additive 202610270002_email_delivery_tracking migration was applied to the original development database and adds reply verification, booking delivery state, minimal provider event receipts, tenant-scoped suppression records and a processor heartbeat. The provider ID is unique; the existing development records were checked for duplicates before applying the index.
+
+POST /api/communications/webhook uses the official Svix verifier over the bounded raw body with RESEND_WEBHOOK_SECRET. Invalid/old signatures are rejected before database access. Event receipts deduplicate on svix-id. Events bind to the attempted message using provider ID or frozen message/tenant tags, with recipient and sender checks. Tags allow a valid event to reconcile an API response that was lost or has not returned yet. No caller-supplied tenant ID can redirect an event to another business. Unknown provider emails are acknowledged without storing them; no open/click tracking is stored.
+
+Delivery states distinguish provider acceptance, delayed delivery, delivery to the recipient mail server, failure, bounce, provider suppression and spam complaint. Delivery is not proof of inbox placement or reading. Later/repeated acceptance or delay events cannot erase a delivery or hard failure; a complaint remains visible. Bounces, suppressions and complaints block subsequent booking delivery to that exact address for that business. There is deliberately no blind resend or automatic suppression-clearing control. Correct the family contact and use another channel; provider-account review is required before any future suppression removal policy. Dashboard attention and saved-message views show delivery problems and practical next steps.
+
+### Platform activation still required (once for PlayFlow)
+
+1. On a stable endpoint the provider can actually reach, register a Resend webhook at HTTPS_APP_ORIGIN/api/communications/webhook. Subscribe to email.sent, email.delivered, email.delivery_delayed, email.failed, email.bounced, email.suppressed and email.complained. Add its signing secret directly to the matching Vercel environment as sensitive RESEND_WEBHOOK_SECRET, then deploy. Do not paste the secret in chat or source. The current protected preview is not automatically reachable by Resend: do not disable protection across the app or claim events are active merely because a secret exists. Resolve deployment-specific protected access or activate on the planned public production route with signature verification preserved.
+2. Verify an actual signed event appears in Resend and the same scoped booking record. Use the approved inbox for delivery acceptance. Test bounce/complaint state with signed local fixtures, not real recipients or deliberately generating a spam complaint against the shared sender.
+3. Verify Palmetto's chosen reply inbox through the new controls. During preview, extngraphics@gmail.com is the approved address available for this test. Use a new approved booking email and actually Reply to verify the mail client chooses the business inbox. Do not infer reply routing from a previous email sent before this change.
+4. Configure the CRON_SECRET and compatible unattended scheduler after choosing a reachable stable target. Native Vercel Cron is production-only and plan-limited. Every authenticated real run records started/completed/failed timestamps; dryRun=1 records nothing and never processes messages. A completed request means the queue processor ran, not that every email was delivered. Observe a due reminder arriving without a staff/parent mutation. No cron schedule or secret was activated by this change.
+
+Validation: all 430 automated tests, changed-source lint and the production build pass. Tests use mocked provider calls and real Svix signing/verification fixtures; no actual email was sent. Browser/iPad interaction, real provider callbacks and unattended delivery remain acceptance work. Do not mark launch item 1 complete until its unchecked acceptance requirements are met.
+
+Provider references: https://resend.com/docs/webhooks/verify-webhooks-requests, https://resend.com/docs/webhooks/event-types and https://resend.com/docs/api-reference/emails/send-email.

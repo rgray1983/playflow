@@ -5,10 +5,25 @@ import {prisma} from "@/lib/prisma";
 import {getStaffContext,withStaff} from "@/lib/auth/staff";
 import {operations} from "@/lib/operations/settings";
 import {preparePartyMessages,processMessages,senderReady,emailSetup} from "@/lib/communications/service";
-async function get(){return NextResponse.json({...emailSetup(),items:(await prisma.bookingMessage.findMany({where:{tenantId:getStaffContext().tenantId},orderBy:{createdAt:"desc"},take:100,select:{id:true,partyId:true,kind:true,recipient:true,subject:true,body:true,status:true,scheduledAt:true,sentAt:true,failureCode:true,retryAt:true,attemptCount:true}})).map(item=>({...item,deliveryAllowed:recipientAllowed(item.recipient)}))});}
+async function get(){
+ const tenantId=getStaffContext().tenantId;
+ const [lastEvent,job,inbox,items]=await Promise.all([
+  prisma.emailDeliveryEvent.findFirst({where:{message:{tenantId}},orderBy:{receivedAt:"desc"},select:{receivedAt:true}}),
+  prisma.communicationJobState.findUnique({where:{id:"booking-email"}}),
+  prisma.emailConfiguration.findUnique({where:{tenantId},select:{verifiedAt:true,replyTo:true}}),
+  prisma.bookingMessage.findMany({where:{tenantId},orderBy:{createdAt:"desc"},take:100,select:{id:true,partyId:true,kind:true,recipient:true,subject:true,body:true,status:true,scheduledAt:true,sentAt:true,failureCode:true,retryAt:true,attemptCount:true,attemptedAt:true,deliveryStatus:true,deliveryUpdatedAt:true,deliveredAt:true,replyTo:true}}),
+ ]);
+ const blocked=await prisma.emailSuppression.findMany({where:{tenantId,recipient:{in:items.map(m=>m.recipient)}},select:{recipient:true}}),suppressed=new Set(blocked.map(m=>m.recipient));
+ return NextResponse.json({...emailSetup(),lastDeliveryEventAt:lastEvent?.receivedAt??null,lastSchedulerRunAt:job?.completedAt??null,lastSchedulerFailureAt:job?.failedAt??null,items:items.map(({attemptedAt,...item})=>{
+  const deliveryBlockedReason=!recipientAllowed(item.recipient)?"Test mode: this address is not an approved test inbox.":suppressed.has(item.recipient)?"This address is blocked after an email bounce, provider suppression or spam complaint.":!attemptedAt&&!emailSetup().testMode&&!(inbox?.verifiedAt&&inbox.replyTo)?"Verify a business reply inbox before starting live delivery.":null;
+  return {...item,deliveryAllowed:!deliveryBlockedReason,deliveryBlockedReason};
+ })});
+}
 async function post(request:Request){let b;try{b=await request.json();}catch{return NextResponse.json({error:"Invalid request."},{status:400});}const tenantId=getStaffContext().tenantId;
  if(!b||typeof b!=="object"||Array.isArray(b))return NextResponse.json({error:"Invalid request."},{status:400});
- if(["queue","retry"].includes(b.action)){if(typeof b.id!=="string")return NextResponse.json({error:"Choose a message."},{status:400});const message=await prisma.bookingMessage.findFirst({where:{id:b.id,tenantId},select:{recipient:true}});if(!message)return NextResponse.json({error:"Message not found."},{status:404});if(!recipientAllowed(message.recipient))return NextResponse.json({error:"Test mode: this recipient is not an approved test inbox. Delivery is blocked."},{status:409});const t=await prisma.tenant.findUniqueOrThrow({where:{id:tenantId}});if(!senderReady()||!operations(t.operationalSettings).communications?.enabled)return NextResponse.json({error:"Configure the sender and enable message rules before queueing delivery."},{status:409});}
+ if(["queue","retry"].includes(b.action)){if(typeof b.id!=="string")return NextResponse.json({error:"Choose a message."},{status:400});const message=await prisma.bookingMessage.findFirst({where:{id:b.id,tenantId},select:{recipient:true,attemptedAt:true}});if(!message)return NextResponse.json({error:"Message not found."},{status:404});if(!recipientAllowed(message.recipient))return NextResponse.json({error:"Test mode: this recipient is not an approved test inbox. Delivery is blocked."},{status:409});if(await prisma.emailSuppression.findUnique({where:{tenantId_recipient:{tenantId,recipient:message.recipient}}}))return NextResponse.json({error:"Delivery is blocked after a bounce, provider suppression or spam complaint. Check the parent’s contact details and reach them another way."},{status:409});
+ if(!message.attemptedAt&&!emailSetup().testMode){const inbox=await prisma.emailConfiguration.findUnique({where:{tenantId}});if(!inbox?.verifiedAt||!inbox.replyTo)return NextResponse.json({error:"Verify the business reply inbox before starting live delivery."},{status:409});}
+ const t=await prisma.tenant.findUniqueOrThrow({where:{id:tenantId}});if(!senderReady()||!operations(t.operationalSettings).communications?.enabled)return NextResponse.json({error:"Configure the sender and enable message rules before queueing delivery."},{status:409});}
  if(b?.action==="prepare"){
   const parties=await prisma.party.findMany({where:{tenantId,status:{notIn:["CANCELLED","COMPLETED"]},startTime:{gt:new Date()}},take:100,orderBy:{startTime:"asc"},select:{id:true}});
   for(const p of parties)await prisma.$transaction(async tx=>{await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id=${tenantId} FOR UPDATE`);await preparePartyMessages(tx,tenantId,p.id);});

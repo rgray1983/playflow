@@ -12,9 +12,15 @@ Only the current item is active. Record implementation, verification and remaini
 - [x] Test-recipient restrictions and retry/deduplication guards.
 - [x] Authenticated no-send scheduler configuration check and controlled processor failure response.
 - [ ] Choose/activate a supported scheduled processor and verify unattended reminder delivery.
-- [ ] Verified per-business reply inbox routing.
-- [ ] Provider delivery/bounce/complaint tracking and useful staff alerts.
-- [ ] Exercise expiration, cancellation and changed-recipient cases with the approved test inbox.
+- [x] Per-business reply-inbox verification, frozen Reply-To headers and live-delivery gate.
+- [x] Signed provider event processing, duplicate/out-of-order protection, delivery states, suppression and staff alerts.
+- [x] Scheduled processor success/failure timestamps and visible activation status.
+- [x] Automated expiration, cancellation, changed-recipient, lost-response and immutable-retry checks.
+- [ ] Verify Palmetto’s chosen reply inbox and accept an actual reply from the approved test message.
+- [ ] Register the provider webhook/signing secret on a reachable deployment and observe real delivered/failure events.
+- [ ] Complete inbox acceptance for expiration, cancellation and changed-recipient scenarios with the approved test inbox.
+
+Implementation validation: 430 automated tests, changed-source lint and the production build pass. No email was sent by the agent during these changes. Provider/scheduler activation and signed-in acceptance remain separate checks.
 
 Done when booking notifications and reminders reach the approved inbox reliably without staff activity, replies go to the correct business, and delivery failures are visible. Change/cancellation message types are completed with item 2.
 
