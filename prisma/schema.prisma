@@ -887,6 +887,7 @@ model ProviderCheckout {
 }
 
 model BookingMessage {
+ presentation Json?
  senderFrom String?
  attemptCount Int @default(0)
  retryAt DateTime?

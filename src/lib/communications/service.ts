@@ -1,3 +1,4 @@
+import {buildBookingEmail,readPresentation,type EmailKind} from "./templates";
 import {deliveryPolicy,recipientAllowed} from "./delivery-policy";
 import type {Prisma} from "@/generated/prisma/client";
 import {prisma} from "@/lib/prisma";
@@ -13,19 +14,28 @@ export async function preparePartyMessages(tx:Prisma.TransactionClient,tenantId:
  const recipient=p.primaryParent?.email?.trim().toLowerCase();if(!recipient||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient))return;
  const origin=process.env.PLAYFLOW_APP_URL?new URL(process.env.PLAYFLOW_APP_URL).origin:null;
  const portal=origin?`${origin}/parent/${encodeURIComponent(t.slug)}`:`/parent/${encodeURIComponent(t.slug)}`;
- const when=p.startTime.toLocaleString("en-US",{timeZone:t.timezone,dateStyle:"full",timeStyle:"short"});
+ const date=p.startTime.toLocaleDateString("en-US",{timeZone:t.timezone,dateStyle:"full"});
+ const time=(value:Date)=>value.toLocaleTimeString("en-US",{timeZone:t.timezone,timeStyle:"short"});
+ const zone=new Intl.DateTimeFormat("en-US",{timeZone:t.timezone,timeZoneName:"short"}).formatToParts(p.startTime).find(part=>part.type==="timeZoneName")?.value??t.timezone;
+ const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
  const settings=operations(t.operationalSettings).communications,links=partyLinkPaths(p),active=settings?.enabled&&senderReady();
- const add=async(kind:string,subject:string,body:string,scheduledAt=new Date())=>{const dedupeKey=`${p.id}:${kind}:${p.startTime.toISOString()}:${recipient}`;const saved=await tx.bookingMessage.upsert({where:{tenantId_dedupeKey:{tenantId,dedupeKey}},create:{tenantId,partyId:p.id,kind,dedupeKey,recipient,subject,body,status:active&&recipientAllowed(recipient)?"QUEUED":"DRAFT",scheduledAt},update:{}});if(kind==="REMINDER"&&["DRAFT","QUEUED"].includes(saved.status)&&!saved.attemptedAt&&saved.scheduledAt.getTime()!==scheduledAt.getTime())await tx.bookingMessage.updateMany({where:{id:saved.id,tenantId,status:{in:["DRAFT","QUEUED"]},attemptedAt:null},data:{scheduledAt}});};
+ const add=async(kind:EmailKind,scheduledAt=new Date())=>{
+  const email=buildBookingEmail({kind,brand:t,title:p.title,date,time:p.endTime?`${time(p.startTime)} – ${time(p.endTime)}`:time(p.startTime),timezone:zone,setupTime:p.setupStartsAt?time(p.setupStartsAt):undefined,packageName:p.packageName,room:p.room,deposit:p.depositStatus==="WAIVED"?"Deposit waived":p.depositStatus.endsWith("COLLECTED")?`Deposit paid · ${money(Number(p.depositAmount??0))}`:Number(p.depositAmount)>0?`Deposit due · ${money(Number(p.depositAmount))}`:"No deposit required",balance:p.balanceDue!==null&&p.balanceDue!==undefined?money(Number(p.balanceDue)):undefined,holdDeadline:p.confirmationExpiresAt?`${p.confirmationExpiresAt.toLocaleString("en-US",{timeZone:t.timezone})} (${t.timezone})`:undefined,portalUrl:portal,hostUrl:origin&&links?origin+links.hostUrl:undefined,guestUrl:origin&&links?origin+links.guestUrl:undefined});
+  const dedupeKey=`${p.id}:${kind}:${p.startTime.toISOString()}:${recipient}`;
+  const saved=await tx.bookingMessage.upsert({where:{tenantId_dedupeKey:{tenantId,dedupeKey}},create:{tenantId,partyId:p.id,kind,dedupeKey,recipient,subject:email.subject,body:email.text,presentation:email.presentation,status:active&&recipientAllowed(recipient)?"QUEUED":"DRAFT",scheduledAt},update:{}});
+  // Upgrade only messages that have never been attempted; an uncertain retry must keep its original payload.
+  if(!saved.presentation&&!saved.attemptedAt&&["DRAFT","QUEUED"].includes(saved.status))await tx.bookingMessage.updateMany({where:{id:saved.id,tenantId,status:{in:["DRAFT","QUEUED"]},attemptedAt:null},data:{subject:email.subject,body:email.text,presentation:email.presentation}});
+  if(kind==="REMINDER"&&["DRAFT","QUEUED"].includes(saved.status)&&!saved.attemptedAt&&saved.scheduledAt.getTime()!==scheduledAt.getTime())await tx.bookingMessage.updateMany({where:{id:saved.id,tenantId,status:{in:["DRAFT","QUEUED"]},attemptedAt:null},data:{scheduledAt}});
+ };
  if(p.status==="PENDING"){
   if(p.confirmationExpiresAt&&p.confirmationExpiresAt<=new Date())return;
-  await add("HOLD",`${t.name}: party reservation on hold`,`${p.title}\n${when} (${t.timezone})\n\nYour reservation is on hold and is not confirmed. Complete the rental agreement and required deposit in your parent portal: ${portal}\n${p.confirmationExpiresAt?`Hold expires: ${p.confirmationExpiresAt.toLocaleString("en-US",{timeZone:t.timezone})} (${t.timezone}).`:"Contact the venue about the hold deadline."}`);
+  await add("HOLD");
  }else if(links){
   if(Number(p.depositAmount)>0&&p.depositStatus!=="WAIVED"&&!p.depositStatus.endsWith("COLLECTED"))return;
   if(!await tx.waiver.findFirst({where:{tenantId,partyId:p.id,kind:"RENTAL",status:"VALID",signedAt:{not:null}}}))return;
-  const host=origin?origin+links.hostUrl:links.hostUrl,guest=origin?origin+links.guestUrl:links.guestUrl;
-  await add("CONFIRMATION",`${t.name}: party booking confirmed`,`${p.title}\n${when} (${t.timezone})\n\nYour party is confirmed.\nPrivate host page (keep this link private): ${host}\nGuest invitation link (share this with guests): ${guest}\nParent portal: ${portal}`);
+  await add("CONFIRMATION");
   const hours=settings?.reminderHours??48,scheduled=new Date(p.startTime.getTime()-hours*3600000);
-  if(scheduled>new Date())await add("REMINDER",`${t.name}: your party is coming up`,`${p.title}\n${when} (${t.timezone})\n\nReview your booking, current balance and guest attendance in your parent portal: ${portal}\nPrivate host page: ${host}\nShare only this guest invitation link with guests: ${guest}`,scheduled);
+  if(scheduled>new Date())await add("REMINDER",scheduled);
  }
 }
 export async function deliverMessage(id:string,tenantId:string){
@@ -45,10 +55,11 @@ export async function deliverMessage(id:string,tenantId:string){
  }
  if((m.attemptCount??0)>=8){await prisma.bookingMessage.update({where:{id},data:{status:"REVIEW",failureCode:"RETRY_LIMIT"}});return;}
  if(m.attemptedAt&&now.getTime()-m.attemptedAt.getTime()>23*3600000){await prisma.bookingMessage.update({where:{id},data:{status:"REVIEW",failureCode:"DELIVERY_UNCERTAIN"}});return;}
- const claimed=await prisma.bookingMessage.updateMany({where:{id,tenantId,OR:[{status:"QUEUED"},{status:"SENDING",updatedAt:{lt:new Date(now.getTime()-60000)}}]},data:{status:"SENDING",attemptedAt:m.attemptedAt??now,attemptCount:{increment:1},retryAt:null,senderFrom:m.senderFrom??process.env.PLAYFLOW_EMAIL_FROM}});if(!claimed.count)return;
+ const presentation=readPresentation(m.presentation);
+ const claimed=await prisma.bookingMessage.updateMany({where:{id,tenantId,updatedAt:m.updatedAt,OR:[{status:"QUEUED"},{status:"SENDING",updatedAt:{lt:new Date(now.getTime()-60000)}}]},data:{status:"SENDING",attemptedAt:m.attemptedAt??now,attemptCount:{increment:1},retryAt:null,senderFrom:m.senderFrom??process.env.PLAYFLOW_EMAIL_FROM}});if(!claimed.count)return;
  try{
   // Stable body and key across uncertain retries; stop before the provider's 24-hour deduplication window expires.
-  const response=await fetch("https://api.resend.com/emails",{method:"POST",signal:AbortSignal.timeout(15000),headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,"Content-Type":"application/json","Idempotency-Key":`playflow-message-${id}`},body:JSON.stringify({from:m.senderFrom??process.env.PLAYFLOW_EMAIL_FROM,to:[m.recipient],subject:m.subject,text:m.body})});
+  const response=await fetch("https://api.resend.com/emails",{method:"POST",signal:AbortSignal.timeout(15000),headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,"Content-Type":"application/json","Idempotency-Key":`playflow-message-${id}`},body:JSON.stringify({from:m.senderFrom??process.env.PLAYFLOW_EMAIL_FROM,to:[m.recipient],subject:m.subject,text:m.body,...(presentation?{html:presentation.html,...(presentation.attachments.length?{attachments:presentation.attachments}:{})}:{})})});
   if(!response.ok){const retryable=response.status===429||response.status>=500;await prisma.bookingMessage.update({where:{id},data:{failureCode:`EMAIL_HTTP_${response.status}`,status:retryable?"QUEUED":"FAILED",retryAt:retryable?retryTime(m.attemptCount??0,new Date(),response.headers.get("retry-after")):null}});return;}
   const data=await response.json();if(typeof data.id!=="string")throw new Error("Invalid provider response");
   await prisma.bookingMessage.update({where:{id},data:{status:"SENT",sentAt:new Date(),providerId:data.id,failureCode:null,retryAt:null}});
