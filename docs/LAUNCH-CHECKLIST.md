@@ -19,7 +19,8 @@ Only the current item is active. Record implementation, verification and remaini
 - [x] Automated expiration, cancellation, changed-recipient, lost-response and immutable-retry checks.
 - [x] Verify Palmetto’s chosen reply inbox (current database state confirmed).
 - [ ] Accept an actual reply from a newly sent test message.
-- [ ] Register the provider webhook/signing secret on a reachable deployment and observe real delivered/failure events.
+- [x] Register the Resend webhook and preview signing secret with the owner-approved project access key; verify signed callbacks, rejected bad signatures and staff authentication.
+- [ ] Observe real provider delivery outcomes from a newly sent test booking message.
 - [ ] Complete inbox acceptance for expiration, cancellation and changed-recipient scenarios with the approved test inbox.
 
 Implementation validation: 456 automated tests, changed-source lint and the production build pass. No email was sent by the agent during these changes. Provider/scheduler activation and signed-in acceptance remain separate checks.
@@ -28,7 +29,7 @@ Done when booking notifications and reminders reach the approved inbox reliably 
 
 Scheduling choice: Vercel durable workflows are configured for the active preview. A worker sleeps until its message is due and rechecks booking state before each attempt; this avoids promoting the app simply to enable production-only native Cron. Hosted wakeup and email acceptance are still unchecked. A one-minute no-email timer check and scheduling recovery controls are in Communications settings.
 
-Provider activation blocker: automatic approval review rejected storing a Vercel project protection-bypass key in the Resend callback URL because that would disclose a persistent credential to Resend. No webhook or signing-secret variable was created. The unused dedicated key created for the attempt was revoked. Owner approval of that specific credential sharing, or an approved public signed callback target, is required before retrying. Keep app protection enabled.
+Provider activation: Richie explicitly approved a dedicated Vercel project access key in Resend’s private webhook URL. The active preview callback is enabled for sent/delivered/delayed/failed/bounced/suppressed/complained events; its signing secret is stored as a sensitive branch-preview variable. Runtime checks returned 200 for a valid signed connection packet, 403 for unsigned/tampered packets, and 401/SIGN_IN_REQUIRED for staff settings with only the outer access key. The connection packet was an unsupported test type and recorded no fabricated delivery event. No real email was sent. Real provider delivery, the hosted timer check and a fresh booking/reminder still need acceptance. The earlier unapproved key was revoked; the newly approved dedicated key remains active for this integration.
 
 ## 2. Finish booking changes and cancellation rules — QUEUED
 
